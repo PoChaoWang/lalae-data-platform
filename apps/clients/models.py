@@ -1,0 +1,226 @@
+from django.db import models
+from django.contrib.auth.models import User
+from django.utils import timezone
+import uuid
+import hashlib
+from django.conf import settings
+from allauth.socialaccount.models import SocialAccount
+from .tasks import create_bigquery_dataset_and_tables_task
+# Create your models here.
+
+class Client(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    bigquery_dataset_id = models.CharField(max_length=100, unique=True, blank=True, null=True, editable=False)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='clients_created',
+        null=True,
+        blank=True
+    )
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='clients_updated',
+        null=True,
+        blank=True
+    )
+    # OAuth related fields
+    google_social_account = models.ForeignKey(
+        SocialAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='clients',
+        limit_choices_to={'provider': 'google'}
+    )
+    oauth_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('NOT_AUTHORIZED', 'Not Authorized'),
+            ('AUTHORIZED', 'Authorized')
+        ],
+        default='NOT_AUTHORIZED'
+    )
+    facebook_social_account = models.ForeignKey(
+        SocialAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='facebook_clients',
+        limit_choices_to={'provider': 'facebook'}
+    )
+    facebook_oauth_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('NOT_AUTHORIZED', 'Not Authorized'),
+            ('AUTHORIZED', 'Authorized')
+        ],
+        default='NOT_AUTHORIZED'
+    )
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        request = kwargs.pop('request', None)
+        if request and request.user.is_authenticated:
+            if not self.pk:  # New instance
+                self.created_by = request.user
+            self.updated_by = request.user
+
+        if not self.pk and not self.bigquery_dataset_id:  # New instance
+            # Generate a unique BigQuery dataset ID
+            timestamp = timezone.now().strftime('%Y%m%d%H%M%S')
+            base_string = f"{self.name}_{timestamp}_{self.created_by.username if self.created_by else ''}"
+            hash_object = hashlib.sha256(base_string.encode())
+            self.bigquery_dataset_id = f"client_{hash_object.hexdigest()[:16]}"
+
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Import here to avoid circular imports
+        from .tasks import delete_bigquery_dataset_task
+        if self.bigquery_dataset_id:
+            delete_bigquery_dataset_task.delay(self.bigquery_dataset_id)
+        super().delete(*args, **kwargs)
+
+    def create_bigquery_dataset_async(self, user_id=None):
+        """Create BigQuery dataset asynchronously.
+        
+        Args:
+            user_id: The ID of the user who is creating the dataset.
+        """
+        
+        if self.bigquery_dataset_id:
+            create_bigquery_dataset_and_tables_task.delay(self.bigquery_dataset_id, user_id)
+
+    def update_oauth_status(self):
+        """Update the OAuth status based on the current state"""
+        if not self.google_social_account:
+            self.oauth_status = 'NOT_AUTHORIZED'
+        else:
+            self.oauth_status = 'AUTHORIZED'
+        self.save(update_fields=['oauth_status'])
+
+    def is_oauth_authorized(self):
+        """Check if the client has valid OAuth authorization"""
+        return self.oauth_status == 'AUTHORIZED'
+
+    def revoke_oauth(self):
+        """Revoke OAuth authorization"""
+        self.google_social_account = None
+        self.oauth_status = 'NOT_AUTHORIZED'
+        self.save(update_fields=['google_social_account', 'oauth_status'])
+
+    def update_facebook_oauth_status(self):
+        """Update Facebook OAuth status based on social account presence"""
+        if self.facebook_social_account:
+            self.facebook_oauth_status = 'AUTHORIZED'
+        else:
+            self.facebook_oauth_status = 'NOT_AUTHORIZED'
+        self.save(update_fields=['facebook_oauth_status'])
+
+    def is_facebook_oauth_authorized(self):
+        """Check if Facebook OAuth is authorized"""
+        return bool(self.facebook_social_account and self.facebook_oauth_status == 'AUTHORIZED')
+
+    def revoke_facebook_oauth(self):
+        """Revoke Facebook OAuth authorization"""
+        self.facebook_social_account = None
+        self.facebook_oauth_status = 'NOT_AUTHORIZED'
+        self.save(update_fields=['facebook_social_account', 'facebook_oauth_status'])
+
+    def save_client_setting(self, user, is_owner=False, can_edit=False, can_view_gcp=False, can_manage_gcp=False):
+        """Save or update client setting for a user.
+        
+        Args:
+            user: The user to set permissions for
+            is_owner: Whether the user is an owner
+            can_edit: Whether the user can edit
+            can_view_gcp: Whether the user can view GCP resources
+            can_manage_gcp: Whether the user can manage GCP resources
+        """
+        ClientSetting.objects.update_or_create(
+            client=self,
+            user=user,
+            defaults={
+                'is_owner': is_owner,
+                'can_edit': can_edit,
+                'can_view_gcp': can_view_gcp,
+                'can_manage_gcp': can_manage_gcp,
+            }
+        )
+
+    def share_with_user(self, user, can_edit=False, can_view_gcp=False, can_manage_gcp=False):
+        """Share client with another user.
+        
+        Args:
+            user: The user to share with
+            can_edit: Whether the user can edit
+            can_view_gcp: Whether the user can view GCP resources
+            can_manage_gcp: Whether the user can manage GCP resources
+        """
+        self.save_client_setting(
+            user=user,
+            is_owner=False,  # 共享用戶不能是擁有者
+            can_edit=can_edit,
+            can_view_gcp=can_view_gcp,
+            can_manage_gcp=can_manage_gcp
+        )
+
+    def unshare_from_user(self, user):
+        """Remove sharing from a user.
+        
+        Args:
+            user: The user to remove sharing from
+        """
+        ClientSetting.objects.filter(client=self, user=user).delete()
+
+    def get_user_settings(self, user):
+        """Get client settings for a specific user.
+        
+        Args:
+            user: The user to get settings for
+            
+        Returns:
+            ClientSetting object or None if not found
+        """
+        try:
+            return ClientSetting.objects.get(client=self, user=user)
+        except ClientSetting.DoesNotExist:
+            return None
+
+    def get_all_shared_users(self):
+        """Get all users who have access to this client.
+        
+        Returns:
+            QuerySet of User objects
+        """
+        return User.objects.filter(client_settings__client=self)
+
+    class Meta:
+        verbose_name = "Client"
+        verbose_name_plural = "Clients"
+
+class ClientSetting(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='settings')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='client_settings')
+    is_owner = models.BooleanField(default=False)
+    can_edit = models.BooleanField(default=False)
+    can_view_gcp = models.BooleanField(default=False, help_text="Can view GCP resources")
+    can_manage_gcp = models.BooleanField(default=False, help_text="Can manage GCP resources")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('client', 'user')
+        verbose_name = "Client Setting"
+        verbose_name_plural = "Client Settings"
+
+    def __str__(self):
+        return f"{self.client.name} - {self.user.username}"

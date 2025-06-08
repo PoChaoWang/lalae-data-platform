@@ -1,0 +1,9 @@
+my-project-for-bigquery-445809-59aa1ed37bf7.json
+data-platform-env/
+.cursor/
+apps/connections/management/
+apps/connections/templates/connections/connection_forms/google_ad_manager.html
+apps/connections/templates/connections/connection_forms/google_play.html
+apps/connections/templates/connections/connection_forms/youtube_channel.html
+.env
+PRD.md

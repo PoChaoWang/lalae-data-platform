@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Welcome to LaLaE Platform</h1>
+{% if user.is_authenticated %}
+    <p>Welcome, {{ user.username }}!</p>
+{% else %}
+    <p>Please login or register to get started.</p>
+{% endif %}
+{% endblock %} 

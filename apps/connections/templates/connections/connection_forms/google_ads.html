@@ -1,0 +1,46 @@
+<div class="mb-3">
+    <label for="{{ form.customer_id.id_for_label }}" class="form-label">Google Ads Customer ID</label>
+    {{ form.customer_id }}
+</div>
+
+<div class="mb-3">
+    <label for="{{ form.resource_name.id_for_label }}" class="form-label">Report Level (Resource)</label>
+    {{ form.resource_name }}
+    <div class="form-text">Select the primary resource for your report.</div>
+</div>
+
+<hr/>
+
+<div class="mb-4">
+    <label class="form-label">Selected Fields</label>
+    <div id="google_selected_fields_display" class="selected-items-container">
+        <span class="text-muted fs-small">No fields selected.</span>
+    </div>
+</div>
+
+<div>
+    <label class="form-label">Available Fields</label>
+    <input type="text" id="google_fields_search" class="form-control form-control-sm mb-1" placeholder="Search fields...">
+    
+    <div id="google_fields_tree_container" class="field-tree-container"></div>
+
+    <div style="display: none;">
+        {{ form.selected_fields }}
+    </div>
+</div>
+<style>
+    .selected-items-container { min-height: 150px; max-height: 150px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem; }
+    .selected-item { display: inline-flex; align-items: center; background-color: #e9ecef; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.2rem 0.6rem; margin: 0.2rem; font-size: 0.875rem; }
+    .selected-item-remove { cursor: pointer; margin-left: 0.5rem; font-weight: bold; font-size: 1.2rem; line-height: 1; }
+
+    /* --- Tree View 專用樣式 --- */
+    .field-tree-container { border: 1px solid #ced4da; border-radius: 0.25rem; height: 250px; overflow: auto; padding: 0.5rem; }
+    .field-tree ul { list-style-type: none; padding-left: 1.2rem; margin: 0; }
+    .field-tree li { padding: 2px 0; }
+    .tree-node { cursor: pointer; user-select: none; padding: 2px 4px; border-radius: 0.2rem;}
+    .tree-node:hover { background-color: #f0f0f0; }
+    .tree-node.is-leaf { font-style: italic; }
+    .tree-node.is-selected { background-color: #d1ecf1; font-weight: bold; }
+    .tree-toggler { margin-right: 5px; display: inline-block; transition: transform 0.1s ease; width: 1rem; text-align: center; font-family: monospace; }
+    .tree-toggler.collapsed { transform: rotate(-90deg); }
+</style>

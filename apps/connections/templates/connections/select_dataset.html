@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Select Client - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center content-header ">
+        <h2>Select Client</h2>
+        <a href="{% url 'connections:connection_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Connections
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for client in clients %}
+        <div class="col">
+            <a href="{% url 'connections:select_data_source' %}?client_id={{ client.id }}&dataset_id={{ client.bigquery_dataset_id }}" class="text-decoration-none">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h5 class="card-title text-dark">{{ client.name }}</h5>
+                        <p class="card-text text-muted">Dataset ID: {{ client.bigquery_dataset_id }}</p>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info">
+                No clients available. Please contact your administrator.
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

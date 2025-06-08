@@ -1,0 +1,625 @@
+{% extends "base.html" %}
+{% block title %}Connect to {{ data_source.get_name_display }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center content-header">
+        <h1>Connect to {{ data_source.get_name_display }}</h1>
+        <a href="{% url 'connections:select_data_source' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Data Sources
+        </a>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                    <form method="post" class="needs-validation" novalidate>
+                        {% csrf_token %}
+                        
+                        {% if messages %}
+                        <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050">
+                            {% for message in messages %}
+                                <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                                    <div class="toast-header {% if message.tags == 'error' %}bg-danger text-white{% elif message.tags == 'warning' %}bg-warning{% elif message.tags == 'success' %}bg-success text-white{% else %}bg-info text-white{% endif %}">
+                                        {% if message.tags == 'error' %}
+                                            <i class="bi bi-exclamation-triangle me-2"></i>
+                                        {% elif message.tags == 'warning' %}
+                                            <i class="bi bi-exclamation-circle me-2"></i>
+                                        {% elif message.tags == 'success' %}
+                                            <i class="bi bi-check-circle me-2"></i>
+                                        {% else %}
+                                            <i class="bi bi-info-circle me-2"></i>
+                                        {% endif %}
+                                        <strong class="me-auto">
+                                            {% if message.tags == 'error' %}
+                                                Error
+                                            {% elif message.tags == 'warning' %}
+                                                Warning
+                                            {% elif message.tags == 'success' %}
+                                                Success
+                                            {% else %}
+                                                Information
+                                            {% endif %}
+                                        </strong>
+                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                                    </div>
+                                    <div class="toast-body">
+                                        {{ message }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        
+                        {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {% for error in form.non_field_errors %}
+                                {{ error }}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+            
+                        {% if data_source.name == 'GOOGLE_ADS' or data_source.name == 'YOUTUBE_CHANNEL' or data_source.name == 'GOOGLE_PLAY' or data_source.name == 'GOOGLE_AD_MANAGER' %}
+                            <div class="mb-4">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Authorization Status</h5>
+                                        <div id="authStatus" class="oauth-status mb-3">
+                                            {% if oauth_status == 'authorized' %}
+                                                <div class="alert alert-success">
+                                                    <i class="bi bi-check-circle"></i> Authorized as: {{ google_account_email }}
+                                                </div>
+                                            {% else %}
+                                                <div class="alert alert-warning">
+                                                    <i class="bi bi-exclamation-triangle"></i> Not authorized
+                                                </div>
+                                                <div class="alert alert-info mt-3">
+                                                    <i class="bi bi-info-circle"></i>
+                                                    <strong>OAuth Authentication Required:</strong> You need to authorize access to your {{ data_source.get_name_display }} data before creating the connection.
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        {% if oauth_status != 'authorized' %}
+                                        <button type="button" 
+                                                class="btn btn-primary oauth-authorize-btn" 
+                                                data-client-id="{{ client.id }}"
+                                                onclick="initiateGoogleOAuth('{{ client.id }}')">
+                                            <i class="bi bi-google"></i>
+                                            Authorize Google Account
+                                        </button>
+                                        {% else %}
+                                        <button type="button" 
+                                                class="btn btn-outline-primary oauth-authorize-btn" 
+                                                data-client-id="{{ client.id }}"
+                                                onclick="initiateGoogleOAuth('{{ client.id }}')">
+                                            <i class="bi bi-arrow-clockwise"></i>
+                                            Re-authorize Google Account
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% elif data_source.name == 'FACEBOOK_ADS' %}
+                            <div class="mb-4">
+                                <div class="card">
+                                    <div class="card-body">
+                                        <h5 class="card-title">Facebook Authorization Status</h5>
+                                        <div id="facebookAuthStatus" class="oauth-status mb-3">
+                                            {% if client.facebook_social_account %}
+                                                <div class="alert alert-success">
+                                                    <i class="bi bi-check-circle"></i> Authorized as: {{ client.facebook_social_account.extra_data.name }}
+                                                </div>
+                                            {% else %}
+                                                <div class="alert alert-warning">
+                                                    <i class="bi bi-exclamation-triangle"></i> Not authorized
+                                                </div>
+                                                <div class="alert alert-info mt-3">
+                                                    <i class="bi bi-info-circle"></i>
+                                                    <strong>OAuth Authentication Required:</strong> You need to authorize access to your Facebook Ads account before creating the connection.
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        
+                                        {% if not client.facebook_social_account %}
+                                        <a href="{% url 'connections:client_oauth_authorize' client.id %}?data_source=FACEBOOK_ADS" 
+                                           class="btn btn-primary">
+                                            <i class="bi bi-facebook"></i>
+                                            Authorize Facebook Account
+                                        </a>
+                                        {% else %}
+                                        <a href="{% url 'connections:client_oauth_authorize' client.id %}?data_source=FACEBOOK_ADS" 
+                                           class="btn btn-outline-primary">
+                                            <i class="bi bi-arrow-clockwise"></i>
+                                            Re-authorize Facebook Account
+                                        </a>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% endif %}
+            
+                        <div class="mb-3">
+                            <label for="{{ form.display_name.id_for_label }}" class="form-label">Connection Name</label>
+                            {{ form.display_name }}
+                            {% if form.display_name.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.display_name.errors }}
+                            </div>
+                            {% endif %}
+                        </div>
+            
+                        <div class="mb-3">
+                            <label for="{{ form.target_dataset_id.id_for_label }}" class="form-label">Target Dataset ID</label>
+                            {{ form.target_dataset_id }}
+                            {% if form.target_dataset_id.errors %}
+                            <div class="invalid-feedback">
+                                {{ form.target_dataset_id.errors }}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">This is the dataset where your data will be stored.</div>
+                        </div>
+            
+                        
+            
+                        {% if data_source.name == 'GOOGLE_ADS' %}
+                            {% include "connections/connection_forms/google_ads.html" %}
+                        {% elif data_source.name == 'YOUTUBE_CHANNEL' %}
+                            {% include "connections/connection_forms/youtube_channel.html" %}
+                        {% elif data_source.name == 'GOOGLE_PLAY' %}
+                            {% include "connections/connection_forms/google_play.html" %}
+                        {% elif data_source.name == 'GOOGLE_AD_MANAGER' %}
+                            {% include "connections/connection_forms/google_ad_manager.html" %}
+                        {% elif data_source.name == 'FACEBOOK_ADS' %}
+                            {% include "connections/connection_forms/facebook_ads.html" %}
+                        {% endif %}
+            
+                        <div class="mb-3">
+                            <div class="row align-items-end">
+                                <div class="col-md-3">
+                                    <label for="{{ form.sync_frequency.id_for_label }}" class="form-label">Sync Frequency</label>
+                                    {{ form.sync_frequency }}
+                                    {% if form.sync_frequency.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.sync_frequency.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="{{ form.sync_hour.id_for_label }}" class="form-label">Hour (24h)</label>
+                                    {{ form.sync_hour }}
+                                    {% if form.sync_hour.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.sync_hour.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="{{ form.sync_minute.id_for_label }}" class="form-label">Minute</label>
+                                    {{ form.sync_minute }}
+                                    {% if form.sync_minute.errors %}
+                                    <div class="invalid-feedback d-block">
+                                        {% for error in form.sync_minute.errors %}{{ error }}{% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="weekly-options" class="mb-3" style="display: none;">
+                            <label for="{{ form.weekly_day_of_week.id_for_label }}" class="form-label">Day of Week</label>
+                            {{ form.weekly_day_of_week }}
+                            {% if form.weekly_day_of_week.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.weekly_day_of_week.errors %}{{ error }}{% endfor %}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">Select which day of the week to sync your data.</div>
+                        </div>
+                        
+                        <div id="monthly-options" class="mb-3" style="display: none;">
+                            <label for="{{ form.monthly_day_of_month.id_for_label }}" class="form-label">Day of Month</label>
+                            {{ form.monthly_day_of_month }}
+                            {% if form.monthly_day_of_month.errors %}
+                            <div class="invalid-feedback d-block">
+                                {% for error in form.monthly_day_of_month.errors %}{{ error }}{% endfor %}
+                            </div>
+                            {% endif %}
+                            <div class="form-text">Select which day of the month to sync your data (1-31).</div>
+                        </div>
+            
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary" id="submitButton">
+                                Create Connection
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+
+    // =================================================================
+    // 功能 1：處理 Sync Frequency 的顯示/隱藏
+    // =================================================================
+    const syncFrequency = document.getElementById('{{ form.sync_frequency.id_for_label }}');
+    const weeklyOptions = document.getElementById('weekly-options');
+    const monthlyOptions = document.getElementById('monthly-options');
+
+    function updateSyncOptionsVisibility() {
+        if (!syncFrequency) return;
+        const value = syncFrequency.value;
+        if (weeklyOptions) weeklyOptions.style.display = value === 'weekly' ? 'block' : 'none';
+        if (monthlyOptions) monthlyOptions.style.display = value === 'monthly' ? 'block' : 'none';
+    }
+
+    if (syncFrequency) {
+        syncFrequency.addEventListener('change', updateSyncOptionsVisibility);
+        updateSyncOptionsVisibility();
+    }   
+    // =================================================================
+    // 功能 2：處理 欄位選擇 UI
+    // =================================================================
+    if ("{{ data_source.name }}" === "FACEBOOK_ADS") {
+        
+        const allFacebookFields = JSON.parse('{{ facebook_fields_json|escapejs }}');
+        const insightsLevelSelect = document.getElementById('id_insights_level');
+        
+        const uiSelectors = {
+            breakdowns: document.getElementById('breakdowns_ui_selector'),
+            action_breakdowns: document.getElementById('action_breakdowns_ui_selector'),
+            fields: document.getElementById('fields_ui_selector')
+        };
+
+        const widgetSelectors = {
+            breakdowns: document.getElementById('id_selected_breakdowns'),
+            action_breakdowns: document.getElementById('id_selected_action_breakdowns'),
+            fields: document.getElementById('id_selected_fields')
+        };
+
+        const displayContainers = {
+            breakdowns: document.getElementById('selectedBreakdownsDisplay'),
+            action_breakdowns: document.getElementById('selectedActionBreakdownsDisplay'),
+            fields: document.getElementById('selectedFieldsDisplay')
+        };
+        
+        const placeholders = {
+            breakdowns: 'No breakdowns selected.',
+            action_breakdowns: 'No action breakdowns selected.',
+            fields: 'No fields selected. You must select at least one.'
+        }
+
+        function createSelectedItemElement(optionValue, optionText, category) {
+            const item = document.createElement('span');
+            item.className = 'selected-item';
+            item.dataset.value = optionValue;
+            
+            const textSpan = document.createElement('span');
+            textSpan.textContent = optionText;
+            
+            const removeBtn = document.createElement('span');
+            removeBtn.className = 'remove-btn';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.title = `Remove ${optionText}`;
+            removeBtn.onclick = function() {
+                const widgetOption = Array.from(widgetSelectors[category].options).find(opt => opt.value === optionValue);
+                if (widgetOption) {
+                    widgetOption.selected = false;
+                    renderSelectedTagsAndHighlights(category);
+                }
+            };
+            item.appendChild(textSpan);
+            item.appendChild(removeBtn);
+            return item;
+        }
+
+        function renderSelectedTagsAndHighlights(category) {
+            const widget = widgetSelectors[category];
+            const display = displayContainers[category];
+            const uiSelector = uiSelectors[category];
+
+            if (!widget || !display || !uiSelector) return;
+            
+            display.innerHTML = '';
+            let hasSelection = false;
+            const selectedValues = new Set();
+
+            Array.from(widget.options).forEach(option => {
+                if (option.selected) {
+                    hasSelection = true;
+                    selectedValues.add(option.value);
+                    // 這行負責在右邊顯示標籤
+                    display.appendChild(createSelectedItemElement(option.value, option.text, category));
+                }
+            });
+
+            if (!hasSelection) {
+                const placeholder = document.createElement('span');
+                placeholder.className = 'text-muted fs-small';
+                placeholder.textContent = placeholders[category];
+                display.appendChild(placeholder);
+            }
+            
+            // 這段負責更新左邊選單的視覺高亮
+            Array.from(uiSelector.options).forEach(option => {
+                if (selectedValues.has(option.value)) {
+                    option.classList.add('is-selected-option');
+                } else {
+                    option.classList.remove('is-selected-option');
+                }
+            });
+        }
+        
+        function populateUISelector(category, fields) {
+            const selector = uiSelectors[category];
+            selector.innerHTML = '';
+            fields.forEach(field => {
+                const option = new Option(field.label, field.name);
+                selector.add(option);
+            });
+        }
+
+        function handleLevelChange() {
+            const level = insightsLevelSelect.value;
+            const levelKey = level === 'adset' ? 'ad_set' : level;
+            const levelData = allFacebookFields[levelKey] || { breakdowns: [], action_breakdowns: [], fields: [] };
+            
+            populateUISelector('breakdowns', levelData.breakdowns);
+            populateUISelector('action_breakdowns', levelData.action_breakdowns);
+            populateUISelector('fields', levelData.fields);
+            
+            ['breakdowns', 'action_breakdowns', 'fields'].forEach(category => {
+                const availableNames = new Set((levelData[category] || []).map(f => f.name));
+                const widget = widgetSelectors[category];
+                Array.from(widget.options).forEach(opt => {
+                    if (opt.selected && !availableNames.has(opt.value)) {
+                        opt.selected = false;
+                    }
+                });
+                renderSelectedTagsAndHighlights(category);
+            });
+        }
+        
+        // ============================================
+        // == 這裡是確保功能正常的最終互動邏輯 ==
+        // ============================================
+        function setupInteraction(category) {
+            const uiSelector = uiSelectors[category];
+            const widget = widgetSelectors[category];
+
+            // 1. 使用 'click' 事件來即時捕獲點擊
+            uiSelector.addEventListener('click', function (e) {
+                // 2. 阻止 <select multiple> 的預設行為，這樣就不需要按 Command 鍵
+                e.preventDefault();
+                
+                // 3. 找出被點擊的選項 (`this` 就是 uiSelector)
+                const clickedUiOption = this.options[this.selectedIndex];
+                if (!clickedUiOption) return;
+
+                // 4. 在隱藏的真實 widget 中找到對應的選項
+                const widgetOption = Array.from(widget.options).find(opt => opt.value === clickedUiOption.value);
+                
+                if (widgetOption) {
+                    // 5. 切換該選項的選中狀態 (點一下選取，再點一下取消)
+                    widgetOption.selected = !widgetOption.selected;
+                    
+                    // 6. 呼叫統一的 UI 更新函式來重繪右邊的標籤和左邊的高亮
+                    renderSelectedTagsAndHighlights(category);
+                }
+            });
+        }
+
+        // --- 初始化 ---
+        insightsLevelSelect.addEventListener('change', handleLevelChange);
+        handleLevelChange(); 
+
+        ['breakdowns', 'action_breakdowns', 'fields'].forEach(category => {
+            setupInteraction(category);
+            renderSelectedTagsAndHighlights(category); 
+        });
+
+        // Date Range visibility logic
+        const dateRangeRadios = document.querySelectorAll('input[name="{{ form.date_range_type.html_name }}"]');
+        const datePresetOptions = document.getElementById('datePresetOptions');
+        const customDateOptions = document.getElementById('customDateOptions');
+        function updateDateRangeVisibility() {
+            const selectedType = document.querySelector('input[name="{{ form.date_range_type.html_name }}"]:checked').value;
+            datePresetOptions.style.display = (selectedType === 'preset') ? 'block' : 'none';
+            customDateOptions.style.display = (selectedType === 'custom') ? 'block' : 'none';
+        }
+        dateRangeRadios.forEach(radio => radio.addEventListener('change', updateDateRangeVisibility));
+        updateDateRangeVisibility();
+    }
+    else if ("{{ data_source.name }}" === "GOOGLE_ADS") {
+            
+            // --- DOM 元素 ---
+            const treeContainer = document.getElementById('google_fields_tree_container');
+            const selectedDisplay = document.getElementById('google_selected_fields_display');
+            const hiddenSelect = document.querySelector('select[name="selected_fields"]');
+            const searchInput = document.getElementById('google_fields_search');
+            
+            const allFieldsTree = JSON.parse('{{ google_fields_json|escapejs|default:"{}" }}');
+            const selectedFields = new Set();
+
+            function buildTreeHtml(node, filterText) {
+                let html = '<ul>';
+                const lowerFilter = filterText.toLowerCase();
+
+                const sortedKeys = Object.keys(node).sort();
+
+                for (const key of sortedKeys) {
+                    const currentNode = node[key];
+                    if (key === '_is_leaf' || key === 'full_name' || key === 'display_name') continue;
+
+                    if (currentNode._is_leaf) {
+                        const fullName = currentNode.full_name;
+                        if (filterText === '' || fullName.toLowerCase().includes(lowerFilter)) {
+                            const isSelectedClass = selectedFields.has(fullName) ? 'is-selected' : '';
+                            html += `<li><span class="tree-node is-leaf ${isSelectedClass}" data-full-name="${fullName}">${key}</span></li>`;
+                        }
+                    } else {
+                        const childrenHtml = buildTreeHtml(currentNode, filterText);
+                        if (childrenHtml !== '<ul></ul>') {
+                            html += `<li>
+                                <span class="tree-node tree-branch">
+                                    <span class="tree-toggler">▼</span>${key}
+                                </span>
+                                ${childrenHtml}
+                            </li>`;
+                        }
+                    }
+                }
+                html += '</ul>';
+                return html;
+            }
+            
+            function renderTree() {
+                const filterText = searchInput.value;
+                const treeHtml = buildTreeHtml(allFieldsTree, filterText);
+                treeContainer.innerHTML = treeHtml ? `<div class="field-tree">${treeHtml}</div>` : '<div class="p-2 text-muted">No matching fields.</div>';
+
+                if (filterText !== '') {
+                    treeContainer.querySelectorAll('.tree-toggler').forEach(toggler => {
+                        const sublist = toggler.parentElement.nextElementSibling;
+                        if(sublist) sublist.style.display = 'block';
+                        toggler.classList.remove('collapsed');
+                    });
+                } else {
+                    treeContainer.querySelectorAll('.field-tree > ul > li > ul').forEach(ul => {
+                        ul.style.display = 'none';
+                        const toggler = ul.previousElementSibling.querySelector('.tree-toggler');
+                        if(toggler) toggler.classList.add('collapsed');
+                    });
+                }
+            }
+            
+            function updateSelectedDisplay() {
+                selectedDisplay.innerHTML = '';
+                if (selectedFields.size === 0) {
+                    selectedDisplay.innerHTML = '<span class="text-muted fs-small">No fields selected.</span>';
+                    return;
+                }
+                selectedFields.forEach(fullName => {
+                    const badge = document.createElement('span');
+                    badge.className = 'selected-item';
+                    badge.textContent = fullName;
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'selected-item-remove';
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.onclick = () => {
+                        selectedFields.delete(fullName);
+                        updateAllUI();
+                    };
+                    badge.appendChild(removeBtn);
+                    selectedDisplay.appendChild(badge);
+                });
+            }
+            
+            function syncWithHiddenForm() {
+                Array.from(hiddenSelect.options).forEach(opt => {
+                    opt.selected = selectedFields.has(opt.value);
+                });
+            }
+            
+            function updateAllUI() {
+                treeContainer.querySelectorAll('.tree-node.is-leaf').forEach(leaf => {
+                    leaf.classList.toggle('is-selected', selectedFields.has(leaf.dataset.fullName));
+                });
+                updateSelectedDisplay();
+                syncWithHiddenForm();
+            }
+
+            // --- 事件監聽 ---
+            treeContainer.addEventListener('click', function(e) {
+                const target = e.target;
+                const parentNodeSpan = target.closest('.tree-node');
+                if (!parentNodeSpan) return;
+
+                if (parentNodeSpan.classList.contains('tree-branch')) {
+                    const sublist = parentNodeSpan.nextElementSibling;
+                    const toggler = parentNodeSpan.querySelector('.tree-toggler');
+                    if (sublist && sublist.tagName === 'UL') {
+                        const isCollapsed = sublist.style.display === 'none';
+                        sublist.style.display = isCollapsed ? 'block' : 'none';
+                        toggler.classList.toggle('collapsed', !isCollapsed);
+                    }
+                } else if (parentNodeSpan.classList.contains('is-leaf')) {
+                    const fullName = parentNodeSpan.dataset.fullName;
+                    if (selectedFields.has(fullName)) {
+                        selectedFields.delete(fullName);
+                    } else {
+                        selectedFields.add(fullName);
+                    }
+                    updateAllUI();
+                }
+            });
+            
+            searchInput.addEventListener('input', renderTree);
+
+            // --- 初始載入 ---
+            if(hiddenSelect) {
+                Array.from(hiddenSelect.options).forEach(opt => {
+                    if (opt.selected) selectedFields.add(opt.value);
+                });
+            }
+            
+            renderTree();
+            updateSelectedDisplay();
+        }
+    });
+
+    // =================================================================
+    // 功能 3：處理 Google OAuth
+    // =================================================================
+    function initiateGoogleOAuth(clientId) {
+        // 顯示載入狀態，防止重複點擊
+        const authButton = document.querySelector('.oauth-authorize-btn');
+        if (!authButton) return;
+        const originalText = authButton.innerHTML;
+        authButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Authorizing...';
+        authButton.disabled = true;
+
+        // getCookie 來自 base.html，所以可以直接使用
+        const csrftoken = getCookie('csrftoken');
+
+        // 呼叫後端，儲存當前頁面 URL
+        fetch("{% url 'connections:save_oauth_redirect' %}", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrftoken
+            },
+            body: JSON.stringify({
+                redirect_url: window.location.href,
+                client_id: clientId
+            })
+        }).then(response => {
+            if (!response.ok) {
+               throw new Error('Failed to save redirect URL. Server responded with ' + response.status);
+            }
+            // 導向到我們的授權起點 URL
+            const oauthUrl = `/connections/oauth/authorize/${clientId}/?data_source=GOOGLE_ADS`;
+            window.location.href = oauthUrl;
+        }).catch(error => {
+            console.error('Error initiating OAuth:', error);
+            alert('An error occurred while starting the authorization process. Please check the console for details.');
+            // 將按鈕恢復原狀
+            authButton.innerHTML = originalText;
+            authButton.disabled = false;
+        });
+
+        return false; // 防止表單的預設提交行為
+    }
+
+</script>
+{% endblock extra_js %}

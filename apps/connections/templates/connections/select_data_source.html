@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load socialaccount %}
+
+{% block title %}Select Data Source - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center content-header ">
+        <h2>Select Data Source</h2>
+        <a href="{% url 'connections:connection_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to Connections
+        </a>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for source in data_sources %}
+        <div class="col">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if source.name == 'FACEBOOK_ADS' %}
+                            Facebook Ads
+                        {% else %}
+                            {{ source.get_name_display }}
+                        {% endif %}
+                    </h5>
+                    <p class="card-text">
+                        {% if source.name == 'GOOGLE_ADS' %}
+                            Connect to Google Ads API to access campaign data and metrics.
+                        {% elif source.name == 'FACEBOOK_ADS' %}
+                            Connect to Facebook Ads API to access campaign data and metrics.
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="card-footer bg-transparent border-top-0">
+                    <a href="{% url 'connections:connection_create' client_id=client_id source_name=source.name %}?dataset_id={{ dataset_id }}" class="btn btn-primary w-100">
+                        Connect to 
+                        {% if source.name == 'FACEBOOK_ADS' %}
+                            Facebook Ads
+                        {% else %}
+                            {{ source.get_name_display }}
+                        {% endif %}
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12">
+            <div class="alert alert-info">
+                No data sources available. Please contact your administrator.
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

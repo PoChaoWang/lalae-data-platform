@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Connection Details: {{ connection.display_name }} - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center content-header">
+        <h1>Connection Details: <span class="fw-normal">{{ connection.display_name }}</span></h1>
+        <a href="{% url 'connections:connection_list' %}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> Back to List
+        </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">{{ connection.data_source.get_name_display }} Connection</h5>
+        </div>
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">Display Name</dt>
+                <dd class="col-sm-9">{{ connection.display_name }}</dd>
+
+                <dt class="col-sm-3">Data Source</dt>
+                <dd class="col-sm-9">{{ connection.data_source.get_name_display }}</dd>
+
+                <dt class="col-sm-3">Status</dt>
+                <dd class="col-sm-9">
+                    <span class="badge 
+                        {% if connection.status == 'ACTIVE' %}bg-success
+                        {% elif connection.status == 'PENDING_AUTH' %}bg-warning text-dark
+                        {% elif connection.status == 'ERROR' %}bg-danger
+                        {% elif connection.status == 'DISABLED' %}bg-secondary
+                        {% else %}bg-light text-dark
+                        {% endif %}">
+                        {{ connection.get_status_display }}
+                    </span>
+                </dd>
+
+                <dt class="col-sm-3">GCP Project ID</dt>
+                <dd class="col-sm-9">{{ gcp_project_id  }}</dd>
+
+                <dt class="col-sm-3">BigQuery Dataset</dt>
+                <dd class="col-sm-9">
+                    {{ connection.target_dataset_id }}
+                    <small class="text-muted">(Tables will be automatically deleted after 7 days)</small>
+                </dd>
+
+                <dt class="col-sm-3">DTS Config Name</dt>
+                <dd class="col-sm-9">{{ connection.dts_transfer_config_name|default:"Not configured" }}</dd>
+
+                {% if connection.data_source.name == 'GOOGLE_ADS' %}
+                <dt class="col-sm-3">Google Ads Customer ID</dt>
+                <dd class="col-sm-9">{{ connection.config_params.customer_id|default:"Not set" }}</dd>
+                {% endif %}
+
+                <dt class="col-sm-3">OAuth Status</dt>
+                <dd class="col-sm-9">
+                    {% if connection.oauth_token %}
+                        <span class="badge bg-success">Authenticated</span>
+                        <small class="text-muted">(Expires: {{ connection.oauth_token_expires_at|date:"Y-m-d H:i:s" }})</small>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Not Authenticated</span>
+                    {% endif %}
+                </dd>
+
+                <dt class="col-sm-3">Last Sync Status</dt>
+                <dd class="col-sm-9">
+                    {% if connection.last_sync_status %}
+                        <div class="alert {% if 'error' in connection.last_sync_status|lower %}alert-danger{% else %}alert-info{% endif %} mb-0">
+                            {{ connection.last_sync_status|linebreaksbr }}
+                        </div>
+                    {% else %}
+                        No sync information available
+                    {% endif %}
+                </dd>
+
+                <dt class="col-sm-3">Created</dt>
+                <dd class="col-sm-9">{{ connection.created_at|date:"Y-m-d H:i:s" }}</dd>
+
+                <dt class="col-sm-3">Last Updated</dt>
+                <dd class="col-sm-9">{{ connection.updated_at|date:"Y-m-d H:i:s" }}</dd>
+            </dl>
+        </div>
+        <div class="card-footer">
+            {% if not connection.oauth_token %}
+                <a href="{% url 'connections:reauthorize_connection' connection.pk %}" class="btn btn-primary">
+                    <i class="bi bi-google"></i> Authorize Access
+                </a>
+            {% endif %}
+            <a href="{% url 'connections:connection_delete' connection.pk %}" class="btn btn-danger float-end">
+                <i class="bi bi-trash"></i> Delete Connection
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

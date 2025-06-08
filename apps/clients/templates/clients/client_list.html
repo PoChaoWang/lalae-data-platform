@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center content-header">
+        <h1>Clients</h1>
+        <a href="{% url 'clients:client-create' %}" class="btn btn-primary">
+            <i class="fas fa-plus"></i> New Client
+        </a>
+    </div>
+
+    {% if messages %}
+    <div class="messages">
+        {% for message in messages %}
+        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>BigQuery Dataset ID</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Created By</th>
+                    <th>Updated</th>
+                    <th>Updated By</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in clients %}
+                <tr>
+                    <td>{{ client.name }}</td>
+                    <td><code>{{ client.bigquery_dataset_id }}</code></td>
+                    <td>
+                        {% if client.is_active %}
+                        <span class="badge bg-success">Active</span>
+                        {% else %}
+                        <span class="badge bg-danger">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ client.created_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ client.created_by.username|default:"-" }}</td>
+                    <td>{{ client.updated_at|date:"Y-m-d H:i" }}</td>
+                    <td>{{ client.updated_by.username|default:"-" }}</td>
+                    <td>
+                        <div class="btn-group">
+                            <a href="{% url 'clients:client-update' client.id %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <a href="{% url 'clients:client-delete' client.id %}" class="btn btn-sm btn-outline-danger"
+                               onclick="return confirm('Are you sure you want to delete this client? This will also delete the associated BigQuery dataset and all its contents.')">
+                                <i class="fas fa-trash"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center">No clients found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %} 

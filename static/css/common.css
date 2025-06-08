@@ -1,0 +1,252 @@
+/* Common styles for all apps */
+
+/* Navbar styles */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+    background-color: #343a40 !important;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+    color: rgba(255, 255, 255, 1);
+}
+
+.navbar-dark .navbar-brand {
+    color: #fff;
+}
+
+.btn-link.nav-link {
+    padding: 0.5rem 1rem;
+    color: rgba(255, 255, 255, 0.8) !important;
+    text-decoration: none;
+}
+
+.btn-link.nav-link:hover {
+    color: rgba(255, 255, 255, 1) !important;
+}
+
+/* Page layout styles */
+.container {
+    padding-top: 56px; /* Navbar height */
+}
+
+.content-header {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* Main content styles */
+.main-content {
+    transition: margin-left 0.3s ease;
+    margin-left: 300px;
+    padding-top: 56px; /* Navbar height */
+}
+
+.main-content.expanded {
+    margin-left: 40px;
+}
+
+/* Card styles */
+.card {
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* Form styles */
+.form-control {
+    height: 38px;
+}
+
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+/* Button styles */
+.btn-group-query {
+    display: flex;
+    gap: 8px;
+}
+
+/* Table styles */
+.table-item {
+    margin-bottom: 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.table-header {
+    padding: 8px 12px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+}
+
+.table-header:hover {
+    background-color: #e9ecef;
+}
+
+.table-columns {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    display: none;
+}
+
+.table-columns.show {
+    display: block;
+}
+
+.column-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    cursor: pointer;
+}
+
+.column-item:hover {
+    background-color: #f8f9fa;
+}
+
+.column-name {
+    font-family: monospace;
+}
+
+.column-type {
+    color: #6c757d;
+    font-size: 0.8rem;
+    margin-left: 8px;
+}
+
+/* Dataset Tables styles */
+.dataset-tables-container {
+    position: fixed;
+    left: 0;
+    top: 56px; /* Navbar height */
+    bottom: 0;
+    width: 300px;
+    background: white;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease;
+    z-index: 1000;
+}
+
+.dataset-tables-container.collapsed {
+    transform: translateX(-260px);
+}
+
+.dataset-tables {
+    height: calc(100vh - 116px); /* Viewport height - (Navbar + Header) */
+    overflow-y: auto;
+    padding: 15px;
+}
+
+.dataset-toggle {
+    position: absolute;
+    right: 10px;
+    top: 10px;
+    z-index: 1001;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+}
+
+.dataset-toggle:hover {
+    background-color: #f8f9fa;
+}
+
+.dataset-toggle.rotated {
+    transform: rotate(180deg);
+}
+
+/* Tab styles */
+.schedule-output-tabs {
+    margin-top: 20px;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+.tab-header {
+    display: flex;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.tab-button {
+    padding: 10px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-weight: 500;
+    color: #495057;
+    transition: all 0.2s;
+}
+
+.tab-button:hover {
+    background-color: #e9ecef;
+}
+
+.tab-button.active {
+    background-color: #fff;
+    border-bottom: 2px solid #007bff;
+    color: #007bff;
+}
+
+.tab-content {
+    padding: 20px;
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+.schedule-details {
+    margin-top: 15px;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+    display: none;
+}
+
+.schedule-details.show {
+    display: block;
+}
+
+/* CodeMirror styles */
+.CodeMirror {
+    height: auto;
+    min-height: 100px;
+    max-height: 120vh;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.toggle-icon {
+    margin-right: 8px;
+    transition: transform 0.2s;
+}
+
+.toggle-icon.rotated {
+    transform: rotate(45deg);
+} 

@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>{{ query_def.name }}</h2>
+        <div>
+            <a href="{% url 'queries:query-list' %}" class="btn btn-outline-secondary me-2">Back to List</a>
+            <a href="{% url 'queries:query-edit' query_def.pk %}" class="btn btn-primary">Edit Query</a>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <!-- Query Details -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Query Details</h5>
+                    <dl class="row mb-0">
+                        <dt class="col-sm-3">Description</dt>
+                        <dd class="col-sm-9">{{ query_def.description|default:"No description" }}</dd>
+
+                        <dt class="col-sm-3">Schedule</dt>
+                        <dd class="col-sm-9">
+                            {% if query_def.schedule_frequency != 'NONE' %}
+                            {{ query_def.get_schedule_frequency_display }}
+                            (starts {{ query_def.schedule_start_datetime|date:"Y-m-d H:i" }})
+                            {% else %}
+                            <span class="text-muted">No schedule</span>
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-3">Output Target</dt>
+                        <dd class="col-sm-9">
+                            {% if query_def.output_target != 'NONE' %}
+                            {{ query_def.get_output_target_display }}
+                            {% if query_def.output_config %}
+                            <br>
+                            <small class="text-muted">
+                                {% if query_def.output_target == 'GOOGLE_SHEET' %}
+                                Sheet ID: {{ query_def.output_config.sheet_id }}
+                                <br>
+                                Sheet Name: {{ query_def.output_config.sheet_name }}
+                                <br>
+                                Write Mode: {{ query_def.output_config.write_mode }}
+                                {% elif query_def.output_target == 'LOOKER_STUDIO' %}
+                                Project: {{ query_def.output_config.project_id }}
+                                <br>
+                                Dataset: {{ query_def.output_config.dataset_id }}
+                                <br>
+                                Table: {{ query_def.output_config.table_id }}
+                                <br>
+                                Write Mode: {{ query_def.output_config.write_mode }}
+                                {% endif %}
+                            </small>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">No output target</span>
+                            {% endif %}
+                        </dd>
+
+                        <dt class="col-sm-3">Last Run</dt>
+                        <dd class="col-sm-9">
+                            {% if query_def.last_run_initiated_at %}
+                            {{ query_def.last_run_initiated_at|date:"Y-m-d H:i" }}
+                            <span class="badge {% if query_def.last_run_status == 'SUCCESS' %}bg-success
+                                {% elif query_def.last_run_status == 'FAILED' %}bg-danger
+                                {% elif query_def.last_run_status == 'RUNNING' %}bg-primary
+                                {% elif query_def.last_run_status == 'SCHEDULED' %}bg-info
+                                {% elif query_def.last_run_status == 'OUTPUT_ERROR' %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ query_def.last_run_status|title }}
+                            </span>
+                            {% else %}
+                            <span class="text-muted">Never</span>
+                            {% endif %}
+                        </dd>
+                    </dl>
+                </div>
+            </div>
+
+            <!-- SQL Query -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">SQL Query</h5>
+                    <pre class="bg-light p-3 rounded"><code>{{ query_def.sql_query }}</code></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <!-- Run Query -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Run Query</h5>
+                    <form method="post" action="{% url 'queries:query-run' query_def.pk %}" id="runForm">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary w-100">Run Query Now</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Latest Results -->
+            {% if query_def.last_successful_run_result %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title">Latest Results</h5>
+                    <p class="text-muted">
+                        Executed: {{ query_def.last_successful_run_result.executed_at|date:"Y-m-d H:i" }}
+                    </p>
+                    <a href="{% url 'queries:query-result-download' query_def.last_successful_run_result.pk %}" 
+                       class="btn btn-success w-100">
+                        Download Results
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Execution History -->
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Execution History</h5>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Executed At</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for execution in executions %}
+                        <tr>
+                            <td>{{ execution.executed_at|date:"Y-m-d H:i" }}</td>
+                            <td>
+                                <span class="badge {% if execution.status == 'SUCCESS' %}bg-success
+                                    {% elif execution.status == 'FAILED' %}bg-danger
+                                    {% elif execution.status == 'RUNNING' %}bg-primary
+                                    {% elif execution.status == 'SCHEDULED' %}bg-info
+                                    {% elif execution.status == 'OUTPUT_ERROR' %}bg-warning
+                                    {% else %}bg-secondary{% endif %}">
+                                    {{ execution.status|title }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if execution.status in 'SUCCESS,OUTPUT_ERROR' and execution.result_data_csv %}
+                                <a href="{% url 'queries:query-result-download' execution.pk %}" 
+                                   class="btn btn-sm btn-outline-success">
+                                    Download
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="3" class="text-center">No execution history</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const runForm = document.getElementById('runForm');
+    
+    runForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        if (confirm('Are you sure you want to run this query now?')) {
+            this.submit();
+        }
+    });
+});
+</script>
+{% endblock %} 

@@ -381,8 +381,18 @@ def run_custom_gaql_and_save(connection_instance, request=None):
         logger.error(f"Unexpected error in run_custom_gaql_and_save: {e}", exc_info=True)
         return False, f"An unexpected error occurred: {e}"
 
-def get_google_ads_page_context(context):
-    """從資料庫建立 Google Ads 欄位的巢狀樹狀結構，用於前端顯示"""
+def get_google_ads_page_context(client):
+    context = {
+        'oauth_status': 'not_authorized',
+        'google_account_email': '',
+        'google_fields_json': '{}'
+    }
+
+    if client and client.is_oauth_authorized():
+        context['oauth_status'] = 'authorized'
+        if client.google_social_account and hasattr(client.google_social_account, 'extra_data'):
+            context['google_account_email'] = client.google_social_account.extra_data.get('email', '')
+
     try:
         fields = GoogleAdsField.objects.all()
         

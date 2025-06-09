@@ -215,7 +215,7 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
 
             elif source_name == "GOOGLE_ADS":
                 # 呼叫我們重構後的函式
-                google_page_context = get_google_ads_page_context(context)
+                google_page_context = get_google_ads_page_context(client)
                 context.update(google_page_context)
 
         except Client.DoesNotExist:

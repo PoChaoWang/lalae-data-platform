@@ -7,6 +7,40 @@
         <h1>My Connections</h1>
         <a href="{% url 'connections:select_dataset' %}" class="btn btn-primary">Add Connection</a>
     </div>
+        {% if messages %}
+        <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050">
+            {% for message in messages %}
+                <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="toast-header {% if message.tags == 'error' %}bg-danger text-white{% elif message.tags == 'warning' %}bg-warning{% elif message.tags == 'success' %}bg-success text-white{% else %}bg-info text-white{% endif %}">
+                        {% if message.tags == 'error' %}
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                        {% elif message.tags == 'warning' %}
+                            <i class="bi bi-exclamation-circle me-2"></i>
+                        {% elif message.tags == 'success' %}
+                            <i class="bi bi-check-circle me-2"></i>
+                        {% else %}
+                            <i class="bi bi-info-circle me-2"></i>
+                        {% endif %}
+                        <strong class="me-auto">
+                            {% if message.tags == 'error' %}
+                                Error
+                            {% elif message.tags == 'warning' %}
+                                Warning
+                            {% elif message.tags == 'success' %}
+                                Success
+                            {% else %}
+                                Information
+                            {% endif %}
+                        </strong>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                    <div class="toast-body">
+                        {{ message }}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
 
         {% if connections %}
             <div class="table-responsive">

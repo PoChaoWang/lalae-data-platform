@@ -32,6 +32,7 @@ urlpatterns = [
         views.ConnectionUpdateView.as_view(),
         name="connection_update",
     ),
+    path('<int:pk>/clone/', views.ConnectionCloneView.as_view(), name='connection_clone'),
     # 刪除連接視圖 (渲染 connection_confirm_delete.html)
     path(
         "<int:pk>/delete/",

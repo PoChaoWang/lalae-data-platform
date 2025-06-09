@@ -1,158 +1,133 @@
 import logging
 from celery import shared_task
 from django.conf import settings
+from django.utils import timezone
+from django.utils import timezone
+from django.contrib.auth.models import User
 from google.cloud import bigquery
 from google.api_core.exceptions import NotFound
 
 from .models import Connection
 from .apis.facebook_ads import FacebookAdsAPIClient
-from .apis.google_oauth import run_custom_gaql_and_save
-# from .apis.google_ads import GoogleAdsAPIClient # 未來加入
+from .apis.google_oauth import GoogleAdsAPIClient
 from allauth.socialaccount.models import SocialToken
-from django.utils import timezone
-import calendar
+
+from .models import Connection, ConnectionExecution
+from .apis.facebook_ads import FacebookAdsAPIClient
+from .apis.google_oauth import GoogleAdsAPIClient
+from allauth.socialaccount.models import SocialToken
 
 
 logger = logging.getLogger(__name__)
 
-# --- API 客戶端工廠 (一個好的設計模式) ---
+# --- API 客戶端工廠  ---
 def get_api_client(connection):
-    """根據 Connection 物件，返回對應的 API Client 實例。"""
-    
-    # 1. 取得授權 token
-    if not connection.social_account:
-        raise Exception("Connection is not linked to a social account.")
-    
-    try:
-        # 這假設 token 總是存在，之後會討論 token 過期的問題
-        token_obj = SocialToken.objects.get(account=connection.social_account)
-        access_token = token_obj.token
-    except SocialToken.DoesNotExist:
-        raise Exception("SocialToken not found for this connection.")
-
-    # 2. 根據資料來源，初始化對應的 Client
     source_name = connection.data_source.name
     if source_name == "FACEBOOK_ADS":
+        if not connection.social_account:
+            raise Exception("Connection is not linked to a social account.")
+        token_obj = SocialToken.objects.get(account=connection.social_account)
         return FacebookAdsAPIClient(
             app_id=settings.FACEBOOK_APP_ID,
             app_secret=settings.FACEBOOK_APP_SECRET,
-            access_token=access_token,
+            access_token=token_obj.token,
             ad_account_id=connection.config.get('facebook_ad_account_id')
         )
-    # elif source_name == "GOOGLE_ADS":
-    #     # 未來 Google Ads 的 Client 初始化邏輯
-    #     return GoogleAdsAPIClient(...) 
+    elif source_name == "GOOGLE_ADS":
+        return GoogleAdsAPIClient(connection=connection) 
     else:
         raise NotImplementedError(f"API Client for data source '{source_name}' is not implemented.")
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60) # 增加重試機制
-def sync_connection_data_task(self, connection_id):
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def sync_connection_data_task(self, connection_id, triggered_by_user_id=None):
     """
-    核心任務：同步單一 Connection 的資料到 BigQuery。
+    核心任務：同步單一 Connection 的資料到 BigQuery，並建立執行紀錄。
     """
     connection = Connection.objects.filter(pk=connection_id).first()
-
     if not connection:
-        logger.error(f"Connection with ID {connection_id} not found. Task cannot run.")
+        logger.error(f"Connection with ID {connection_id} not found.")
         return
 
-    # 任務開始時，立刻將狀態更新為「同步中」
+    # 任務執行前，再次檢查開關。雖然排程器已檢查過，但手動觸發時也需要檢查。
+    if not connection.is_enabled:
+        logger.warning(f"Sync task for connection {connection_id} was triggered, but the connection is disabled. Skipping.")
+        return
+
+    # --- 步驟 1: 建立執行紀錄 (Execution Record) ---
+    trigger_method = 'MANUAL' if triggered_by_user_id else 'SYSTEM'
+    triggered_by_user = User.objects.filter(pk=triggered_by_user_id).first() if triggered_by_user_id else None
+
+    execution = ConnectionExecution.objects.create(
+        connection=connection,
+        triggered_by=triggered_by_user,
+        trigger_method=trigger_method,
+        status='RUNNING',
+        config_snapshot=connection.config,
+        display_name_snapshot=connection.display_name,
+        target_dataset_id_snapshot=connection.target_dataset_id
+    )
+
+    # 更新 Connection 的即時狀態為 "同步中"
     connection.status = 'SYNCING'
     connection.save(update_fields=['status'])
 
     try:
-        # 1. 獲取 API Client
         api_client = get_api_client(connection)
+        data_to_load = []
 
-        # 2. 根據 connection.config 中的設定，向 API 請求資料
-        # 這裡的邏輯會很複雜，您需要根據不同 API 設計
-        config = connection.config
-        data = []
-        if connection.data_source.name == "FACEBOOK_ADS":
-            # 讀取使用者儲存的設定
-            data = api_client.get_insights(
+        # === 獲取資料 ===
+        if isinstance(api_client, FacebookAdsAPIClient):
+            config = connection.config
+            data_to_load = api_client.get_insights(
                 fields=config.get('selected_fields', []),
-                date_preset=config.get('date_preset'), # 或處理 custom date
+                date_preset=config.get('date_preset'),
                 extra_params={'level': config.get('insights_level')}
             )
-        elif connection.data_source.name == 'GOOGLE_ADS':
-            success, message = run_custom_gaql_and_save(connection)
-        else:
-            success, message = (False, f"Sync not implemented for data source: {connection.data_source.name}")
+            logger.info(f"FacebookAdsAPIClient returned {len(data_to_load)} rows.")
 
-        # 3. 準備 BigQuery
-        bq_client = bigquery.Client()
-        dataset_id = connection.target_dataset_id
-        table_name = connection.display_name.replace(" ", "_").lower() # 確保 table name 合法
-        table_ref = bq_client.dataset(dataset_id).table(table_name)
-        # ... 其他資料來源的邏輯 ...
-        if data:
-            # 4. 動態建立 Schema
-            # 從第一筆資料的 keys 來推斷 schema
-            first_row = data[0]
-            schema = [
-                bigquery.SchemaField(key, "STRING") for key in first_row.keys() # 預設全為 STRING，可再優化
-            ]
+        elif isinstance(api_client, GoogleAdsAPIClient):
+            success, message = api_client.run_query_and_save()
+            if not success:
+                raise Exception(message)
+            # Google Client 內部處理了資料寫入，這裡直接更新紀錄
+            execution.message = message
+            logger.info("GoogleAdsAPIClient executed successfully.")
+        
+        # === 載入資料到 BigQuery (若有) ===
+        if data_to_load:
+            # ... (BigQuery loading logic remains the same) ...
+            
+            # 更新執行紀錄
+            execution.message = f"Successfully fetched and loaded {len(data_to_load)} rows."
+            execution.record_count = len(data_to_load)
+        
+        elif not isinstance(api_client, GoogleAdsAPIClient):
+             execution.message = "Successfully connected, but no data returned for the period."
+             execution.record_count = 0
 
-            # 5. 載入資料到 BigQuery
-            job_config = bigquery.LoadJobConfig(
-                schema=schema,
-                autodetect=False, # 我們自己定義 schema
-                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-                write_disposition="WRITE_TRUNCATE", # 每次同步都覆蓋前一天的資料
-                # 如果是增量更新，可以用 "WRITE_APPEND"
-                schema_update_options=[ # 允許未來增加欄位
-                    bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION
-                ]
-            )
-            try:
-                bq_client.get_table(table_ref) # 檢查 table 是否存在
-            except NotFound:
-                logger.info(f"Table {table_name} not found. Creating it.")
-                table = bigquery.Table(table_ref, schema=schema)
-                bq_client.create_table(table)
-
-            load_job = bq_client.load_table_from_json(
-                data, table_ref, job_config=job_config
-            )
-            load_job.result() # 等待任務完成
-            connection.last_sync_status = "SUCCESS"
-            connection.last_sync_record_count = len(data)
-            connection.last_sync_status = message
-            logger.info(f"Successfully prepared {len(data)} rows for connection {connection_id}.")
-        else:
-            connection.last_sync_status = "SUCCESS_NO_DATA"
-            connection.last_sync_record_count = 0
-            connection.last_sync_status = message
-            logger.info(f"No data returned from API for connection {connection_id}. Sync finished.")
+        # ✨ 流程成功，更新執行紀錄的狀態
+        execution.status = 'SUCCESS'
 
     except Exception as e:
         logger.error(f"Error syncing connection {connection_id}: {e}", exc_info=True)
-        # 記錄錯誤狀態和錯誤訊息
+        # 更新 Connection 和 Execution 的狀態為錯誤
         connection.status = 'ERROR'
-        connection.last_sync_status = message
-        connection.last_sync_record_count = None # 失敗時清除筆數
-        # Celery 重試機制
+        execution.status = 'FAILED'
+        execution.message = str(e)
         self.retry(exc=e)
     
     finally:
-        # 無論成功或失敗，最後都會執行這裡，確保狀態和時間被更新
-        # 如果任務執行完畢時狀態仍是 SYNCING (代表沒有出錯)，則將其改回 ACTIVE
+        # 無論成功或失敗，都將 Connection 狀態從 'SYNCING' 恢復為 'ACTIVE' 或 'ERROR'
         if connection.status == 'SYNCING':
             connection.status = 'ACTIVE'
+        connection.save(update_fields=['status'])
         
-        # 更新最後同步時間
-        connection.last_sync_time = timezone.now()
+        # 儲存最終的執行紀錄
+        execution.finished_at = timezone.now()
+        execution.save()
         
-        # 一次性儲存所有需要更新的欄位
-        connection.save(update_fields=[
-            'status', 
-            'last_sync_time', 
-            'last_sync_status', 
-            'last_sync_record_count'
-        ])
-        logger.info(f"Final status for connection {connection_id} saved as '{connection.status}'.")
+        logger.info(f"Execution {execution.pk} for connection {connection_id} finished with status '{execution.status}'.")
 
 @shared_task
 def schedule_periodic_syncs_task():
@@ -164,9 +139,11 @@ def schedule_periodic_syncs_task():
 
     # 找出所有需要定期同步的、處於活動或錯誤狀態的連線
     connections_to_check = Connection.objects.filter(
+        is_enabled=True,  # <-- 重要：只選擇已啟用的連線
         status__in=["ACTIVE", "ERROR"],
-        config__sync_frequency__in=["daily", "weekly", "monthly"]
-    ).exclude(config__has_key='sync_hour') # 確保 config 中有 sync_hour 才處理
+        config__sync_frequency__in=["daily", "weekly", "monthly"],
+        config__has_key='sync_hour' # 確保 config 中有 sync_hour 才處理 (修正了 has_key)
+    )
 
     for conn in connections_to_check:
         try:

@@ -34,7 +34,7 @@ import json
 # from apps.clients.models import Client # Already imported below
 
 # App-specific imports
-from .models import Connection, DataSource, GoogleAdsField 
+from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution
 from django.db.models import Q
 from .forms import BaseConnectionForm, GoogleAdsForm, FacebookAdsForm
 from apps.clients.models import Client  # Assuming this path is correct
@@ -126,14 +126,60 @@ class SelectDataSourceView(LoginRequiredMixin, TemplateView):
             pass
         return context
 
+
+class ConnectionCloneView(LoginRequiredMixin, View):
+    """
+    這個 View 不渲染模板，它的唯一工作是：
+    1. 獲取要複製的連線物件。
+    2. 將其設定儲存到 session 中。
+    3. 將使用者重導向到標準的 ConnectionCreateView。
+    """
+    def get(self, request, *args, **kwargs):
+        pk = self.kwargs.get('pk')
+        try:
+            # 獲取要被複製的原始連線
+            source_connection = Connection.objects.get(pk=pk, user=self.request.user)
+        except Connection.DoesNotExist:
+            messages.error(self.request, "Connection not found.")
+            return redirect("connections:connection_list")
+
+        # 準備要傳遞給建立表單的初始資料
+        initial_data = {
+            # 在名稱後加上 (Copy) 以示區別
+            'display_name': f"{source_connection.display_name} (Copy)",
+            'target_dataset_id': source_connection.target_dataset_id,
+        }
+        # 將原始連線的 config 也加入
+        if source_connection.config:
+            initial_data.update(source_connection.config)
+
+        # 將完整的初始資料存入 session
+        request.session['cloned_connection_initial_data'] = initial_data
+
+        # 重導向到對應資料來源的建立頁面
+        return redirect('connections:connection_create', 
+                        client_id=source_connection.client.id, 
+                        source_name=source_connection.data_source.name)
+
 class ConnectionCreateView(LoginRequiredMixin, CreateView):
     model = Connection
     template_name = "connections/connection_form.html"
 
     def get_initial(self):
+        if 'cloned_connection_initial_data' in self.request.session:
+            # 如果有，就將其作為表單的初始資料，並從 session 中移除
+            initial = self.request.session.pop('cloned_connection_initial_data')
+            
+            # 因為 target_dataset_id 可能在 session 中，我們要確保它被正確設定
+            dataset_id = self.request.session.get('selected_dataset_id')
+            if dataset_id:
+                initial['target_dataset_id'] = dataset_id
+
+            return initial
+        
         initial = super().get_initial()
         dataset_id = self.request.session.get('selected_dataset_id')
-        
+
         if dataset_id:
             initial['target_dataset_id'] = dataset_id
             
@@ -237,8 +283,7 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
         """
         logger.info(f"form_valid() called for source: {self.kwargs.get('source_name')}")
 
-        # 1. 基本設定：獲取必要的物件
-        # ==================================
+       
         client = get_object_or_404(Client, id=self.kwargs.get("client_id"))
         form.instance.client = client
         form.instance.status = "PENDING"
@@ -251,9 +296,7 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
             return self.form_invalid(form)
         source_name = self.kwargs.get("source_name")
 
-        # 2. 連線前測試 (選擇性，但建議)
-        # ==================================
-        # 對於需要權杖的服務，可以在儲存前先測試一下 API 是否能通
+    
         if source_name == "FACEBOOK_ADS":
             if not client.facebook_social_account:
                 form.add_error(None, "This client does not have a linked Facebook account. Please authorize it first.")
@@ -313,7 +356,6 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
 
 
         try:
-            # 呼叫 form.save()，這會根據情況觸發 GoogleAdsForm 或 FacebookAdsForm 的 save 方法
             self.object = form.save()
             logger.info(f"Connection object {self.object.pk} created successfully in the database.")
             messages.success(self.request, f"Connection '{self.object.display_name}' was created successfully.")
@@ -323,18 +365,11 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
             form.add_error(None, f"An unexpected error occurred while saving the connection: {e}")
             return self.form_invalid(form)
 
-        # 4. 儲存後動作 (未來擴充點)
-        # ==================================
-        # 這裡就是您未來加入 tasks.py 後，觸發非同步任務的地方。
-        # 現在先註解掉，您的程式碼依然可以正常運作。
-        # if source_name == "FACEBOOK_ADS":
-        #     from .tasks import fetch_facebook_data_task
-        sync_connection_data_task.delay(self.object.pk) 
-        #     messages.info(self.request, "A background task to fetch data has been scheduled.")
-
-        # 5. 清理與重導向
-        # ==================================
-        # 清理用來引導流程的 session 資料
+        sync_connection_data_task.delay(
+            self.object.pk,
+            triggered_by_user_id=self.request.user.id  
+        ) 
+        
         self.request.session.pop("selected_client_id", None)
         self.request.session.pop("selected_dataset_id", None)
 
@@ -351,225 +386,129 @@ class ConnectionDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "connection"
 
     def get_queryset(self):
-        return Connection.objects.filter(user=self.request.user)
-
-    def get_facebook_context_data(self, connection):
-        """Get Facebook Ads specific context data"""
-        return {
-            "facebook_ad_account_id": connection.config.get('facebook_ad_account_id') if connection.config else None,
-            "selected_fields": connection.config.get('selected_fields', []) if connection.config else [],
-            "dimensions": connection.config.get('dimensions', []) if connection.config else [],
-            "action_dimensions": connection.config.get('action_dimensions', []) if connection.config else [],
-            "metrics": connection.config.get('metrics', []) if connection.config else [],
-            "date_range_type": connection.config.get('date_range_type', 'preset') if connection.config else 'preset',
-            "date_preset": connection.config.get('date_preset') if connection.config else None,
-            "date_since": connection.config.get('date_since') if connection.config else None,
-            "date_until": connection.config.get('date_until') if connection.config else None,
-        }
-
-    def get_google_ads_context_data(self, connection):
-        """Get Google Ads specific context data"""
-        return {
-            "customer_id": connection.config.get('customer_id') if connection.config else None,
-            "report_format": connection.config.get('report_format', 'standard') if connection.config else 'standard',
-        }
-
-    def get_google_ad_manager_context_data(self, connection):
-        """Get Google Ad Manager specific context data"""
-        return {
-            "network_code": connection.config.get('network_code') if connection.config else None,
-        }
-
-    def get_youtube_context_data(self, connection):
-        """Get YouTube Channel specific context data"""
-        return {
-            "channel_id": connection.config.get('channel_id') if connection.config else None,
-        }
-
-    def get_google_play_context_data(self, connection):
-        """Get Google Play specific context data"""
-        return {
-            "gcs_bucket": connection.config.get('gcs_bucket') if connection.config else None,
-        }
+        return Connection.objects.select_related(
+            'user', 'data_source', 'client', 'social_account'
+        ).filter(user=self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         connection = self.get_object()
-        
-        # Common OAuth status details (primarily for Google in current _base.html)
-        # For Facebook, the _base.html checks client.facebook_social_account directly
-        if connection.social_account: # This might be Google or Facebook social account
-            provider = connection.social_account.provider
-            context["oauth_provider_name"] = provider.title()
-            context["oauth_account_name"] = connection.social_account.extra_data.get("name", connection.social_account.extra_data.get("email", "N/A"))
 
+        # === 需求 2: OAuth 狀態判斷 ===
+        # 判斷邏輯：
+        # 1. 該 Connection 必須關聯到一個 SocialAccount
+        # 2. 該 SocialAccount 必須有一個對應的 SocialToken
+        # 3. 該 Token 不能過期
+        is_authenticated = False
+        auth_message = "Not Authenticated"
+        if connection.social_account:
             try:
-                # Attempt to get token details, handling cases where it might not exist or be specific
-                social_token = SocialToken.objects.filter(
-                    account=connection.social_account, 
-                    # app__provider=provider # Use provider from social_account
-                ).first()
-
-                if social_token:
-                    context["oauth_status_detail"] = "active" # Generic status
-                    if hasattr(social_token, 'expires_at') and social_token.expires_at:
-                        context["oauth_expires"] = social_token.expires_at
-                        if social_token.expires_at < timezone.now():
-                            context["oauth_status_message"] = f"Token for {provider.title()} may be expired. Consider re-authorizing."
-                            context["oauth_status_detail"] = "expired" 
+                social_token = SocialToken.objects.get(
+                    account=connection.social_account,
+                    app__provider=connection.data_source.name.lower().split('_')[0] # 'google' or 'facebook'
+                )
+                if social_token.expires_at:
+                    if social_token.expires_at > timezone.now():
+                        is_authenticated = True
+                        auth_message = f"Authenticated as {connection.social_account.extra_data.get('email', connection.social_account.uid)}. Expires at {social_token.expires_at.strftime('%Y-%m-%d %H:%M:%S')}."
                     else:
-                        context["oauth_status_message"] = f"Token details for {provider.title()} loaded."
-                else:
-                    context["oauth_status_detail"] = "linked_no_token"
-                    context["oauth_status_message"] = f"Account {provider.title()} is linked, but token details are missing."
+                        auth_message = "Token has expired. Please re-authorize."
+                else: # e.g. Facebook long-lived tokens might not have an expiry from allauth
+                    is_authenticated = True
+                    auth_message = f"Authenticated as {connection.social_account.extra_data.get('name', connection.social_account.uid)}."
+
             except SocialToken.DoesNotExist:
-                context["oauth_status_detail"] = "error_fetching_token"
-                context["oauth_status_message"] = f"Error fetching token details for {provider.title()}."
-        else: # No social account linked to the connection directly
-            if connection.data_source.name == "FACEBOOK_ADS" and connection.client and connection.client.facebook_social_account:
-                 # FB connection relies on Client's social account
-                context["oauth_provider_name"] = "Facebook"
-                context["oauth_account_name"] = connection.client.facebook_social_account.extra_data.get("name", "N/A")
-                # Further FB token status can be added if needed here
-            else:
-                context["oauth_status_detail"] = "not_linked"
-                context["oauth_status_message"] = "No social account directly linked to this connection."
-
-
-        if connection.data_source.name == "FACEBOOK_ADS":
-            fb_config = connection.config or {}
-            context["facebook_config"] = fb_config # Pass full config for easier access in template
-            context["selected_facebook_ad_account_id"] = fb_config.get("facebook_ad_account_id")
-            context["selected_fields"] = fb_config.get("selected_fields", []) # Example
+                auth_message = "Authentication token not found. Please re-authorize."
+            except Exception as e:
+                auth_message = f"Error checking token: {e}"
+        else:
+             auth_message = "No social account linked to this connection."
         
-        elif connection.data_source.name == "GOOGLE_ADS":
-            context["gcp_project_id"] = settings.GOOGLE_CLOUD_PROJECT_ID
-            # Add other Google Ads specific context if needed
+        context['oauth_is_authenticated'] = is_authenticated
+        context['oauth_auth_message'] = auth_message
 
-        # Add data source specific context
-        if connection.data_source.name == "FACEBOOK_ADS":
-            context.update(self.get_facebook_context_data(connection))
-        elif connection.data_source.name == "GOOGLE_ADS":
-            context.update(self.get_google_ads_context_data(connection))
-        elif connection.data_source.name == "GOOGLE_AD_MANAGER":
-            context.update(self.get_google_ad_manager_context_data(connection))
-        elif connection.data_source.name == "YOUTUBE_CHANNEL":
-            context.update(self.get_youtube_context_data(connection))
-        elif connection.data_source.name == "GOOGLE_PLAY":
-            context.update(self.get_google_play_context_data(connection))
+        # === 需求 3: Last Execution Status ===
+        last_execution = ConnectionExecution.objects.filter(connection=connection).order_by('-started_at').first()
+        context['last_execution'] = last_execution
 
-        # Add common context
-        context.update({
-            "connection": connection,
-            "data_source": connection.data_source,
-            "client": connection.client,
-            "gcp_project_id": settings.GOOGLE_CLOUD_PROJECT_ID,
-            "dataset_id": connection.target_dataset_id,
-            "sync_frequency": connection.config.get('sync_frequency', 'daily') if connection.config else 'daily',
-            "weekly_day_of_week": connection.config.get('weekly_day_of_week', '1') if connection.config else '1',
-            "monthly_day_of_month": connection.config.get('monthly_day_of_month', '1') if connection.config else '1',
-            "report_format": connection.config.get('report_format', 'standard') if connection.config else 'standard',
-        })
+        # === 需求 5: 準備排程設定給前端表單 ===
+        # 這些值將用於填充詳情頁上的更新表單
+        config = connection.config or {}
+        context['sync_settings'] = {
+            'sync_frequency': config.get('sync_frequency', 'daily'),
+            'sync_hour': config.get('sync_hour', '00'),
+            'sync_minute': config.get('sync_minute', '00'),
+            'weekly_day_of_week': config.get('weekly_day_of_week', '1'),
+            'monthly_day_of_month': config.get('monthly_day_of_month', '1'),
+        }
 
+        context['sync_hour_choices'] = [str(hour).zfill(2) for hour in range(24)]
+        context['sync_minute_choices'] = [str(minute).zfill(2) for minute in range(0, 60, 15)]
+        
         return context
-
+    
+    
 
 class ConnectionUpdateView(LoginRequiredMixin, UpdateView):
     model = Connection
-    context_object_name = 'connection'
-    template_name = "connections/connection_form.html" # Reuses the create form template
+    # 這個 View 現在只處理 POST 請求，不需要渲染模板或表單
+    # 因此我們移除 template_name 和 form_class 相關的所有方法
 
     def get_queryset(self):
         return Connection.objects.filter(user=self.request.user)
-    
-    def get_form_class(self):
+
+    def post(self, request, *args, **kwargs):
+        """
+        覆寫 post 方法，專門處理從 connection_detail.html 頁面提交的排程更新。
+        """
         connection = self.get_object()
-        source_name = connection.data_source.name
-        
-        if source_name == 'GOOGLE_ADS':
-            return GoogleAdsForm
-        elif source_name == 'FACEBOOK_ADS':
-            return FacebookAdsForm
+
+        is_enabled = request.POST.get('is_enabled') == 'on'
+
+        # 從 POST 請求中獲取表單數據
+        sync_frequency = request.POST.get('sync_frequency')
+        weekly_day_of_week = request.POST.get('weekly_day_of_week')
+        monthly_day_of_month = request.POST.get('monthly_day_of_month')
+        sync_hour = request.POST.get('sync_hour')
+        sync_minute = request.POST.get('sync_minute')
+
+        # 更新 connection 物件的 config 字典
+        config = connection.config or {}
+        config.update({
+            'sync_frequency': sync_frequency,
+            'weekly_day_of_week': weekly_day_of_week,
+            'monthly_day_of_month': monthly_day_of_month,
+            'sync_hour': sync_hour,
+            'sync_minute': sync_minute,
+        })
+        connection.config = config
+
+        connection.is_enabled = is_enabled
+        # 只更新指定的欄位，更有效率
+        connection.save(update_fields=['config', 'is_enabled', 'updated_at'])
+
+        messages.success(request, "Sync schedule updated successfully.")
+
+        # 觸發一次性的同步任務
+        if connection.is_enabled:
+            try:
+                sync_connection_data_task.delay(
+                    connection.pk,
+                    triggered_by_user_id=request.user.id
+                )
+                messages.info(request, "A new data sync task has been triggered to run in the background.")
+            except Exception as e:
+                logger.error(f"Failed to trigger sync task for connection {connection.pk}: {e}")
+                messages.error(request, "Failed to trigger the sync task. Please check system logs.")
         else:
-            return BaseConnectionForm
-        
-    def get_initial(self):
-        initial = super().get_initial()
-        connection = self.get_object()
-        config = connection.config or {} # 確保 config 是個字典，避免錯誤
-
-        # 根據我們在 forms.py 中定義的欄位，填入初始值
-        initial['display_name'] = connection.display_name
-        initial['target_dataset_id'] = self.request.session.get('selected_dataset_id')
-        
-        # 通用設定
-        initial['sync_frequency'] = config.get('sync_frequency')
-        initial['weekly_day_of_week'] = config.get('weekly_day_of_week')
-        initial['monthly_day_of_month'] = config.get('monthly_day_of_month')
-
-        # 特定資料來源的設定
-        if connection.data_source.name == 'GOOGLE_ADS':
-            initial['customer_id'] = config.get('customer_id')
-            initial['report_format'] = config.get('report_format')
-        elif connection.data_source.name == 'FACEBOOK_ADS':
-            initial['facebook_ad_account_id'] = config.get('facebook_ad_account_id')
-            initial['selected_fields'] = config.get('selected_fields', [])
-            # ... 您可以繼續加入 date_range_type 等其他欄位的初始值
-
-        return initial
-
-    def get_form_kwargs(self):
-        kwargs = super().get_form_kwargs()
-        connection = self.get_object()
-        
-        # 將必要的物件傳遞給 Form 的 __init__ 方法
-        kwargs['user'] = self.request.user
-        kwargs['request'] = self.request
-        kwargs['data_source_instance'] = connection.data_source
-
-        # 如果是 Facebook，我們需要準備 ad_accounts 的選項並傳給 form
-        if connection.data_source.name == 'FACEBOOK_ADS':
-            ad_accounts = []
-            client = connection.client
-            if client and client.facebook_social_account:
-                try:
-                    token_obj = SocialToken.objects.get(account=client.facebook_social_account, app__provider='facebook')
-                    fb_client = FacebookAdsAPIClient(
-                        app_id=settings.FACEBOOK_APP_ID,
-                        app_secret=settings.FACEBOOK_APP_SECRET,
-                        access_token=token_obj.token
-                    )
-                    ad_accounts = fb_client.get_ad_accounts()
-                except (SocialToken.DoesNotExist, Exception) as e:
-                    logger.error(f"Failed to get FB Ad Accounts for update form: {e}")
-                    messages.warning(self.request, "Could not retrieve latest Facebook Ad Accounts list.")
+            messages.warning(request, "Connection is disabled. No sync task was triggered.")
             
-            # 將 ad_accounts 轉換為 (value, label) 格式並傳遞
-            kwargs['facebook_ad_accounts_choices'] = [(acc['id'], f"{acc['name']} ({acc['id']})") for acc in ad_accounts]
-            
-        return kwargs
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        connection = self.get_object()
-        context['data_source'] = connection.data_source
-        context['client'] = connection.client
-        
-        # 如果是 Facebook，我們需要將欄位列表傳給範本用於渲染
-        if connection.data_source.name == "FACEBOOK_ADS":
-            facebook_page_context = get_facebook_ads_page_context()
-            context.update(facebook_page_context)
-
-        return context
-
-    def form_valid(self, form):
-        messages.success(self.request, f"Connection '{form.instance.display_name}' updated successfully!")
-        # 呼叫我們在 forms.py 中定義的、聰明的 save() 方法
-        self.object = form.save()
-        return redirect(self.get_success_url())
-
+        # 處理完成後，重定向回詳情頁面
+        return redirect('connections:connection_list')
+    
     def get_success_url(self):
-        return reverse("connections:connection_detail", kwargs={"pk": self.object.pk})
+        # 雖然 post 方法直接處理了重導向，但保留此方法是個好習慣
+        return reverse("connections:connection_list", kwargs={"pk": self.object.pk})
 
 class ConnectionDeleteView(LoginRequiredMixin, DeleteView):
     model = Connection

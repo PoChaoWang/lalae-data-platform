@@ -2,9 +2,12 @@
 {% block title %}Connection Details: {{ connection.display_name }} - {{ block.super }}{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="d-flex justify-content-between align-items-center content-header">
-        <h1>Connection Details: <span class="fw-normal">{{ connection.display_name }}</span></h1>
+<div class="container my-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h1 class="h3 mb-0">Connection Details</h1>
+            <p class="text-muted mb-0">{{ connection.display_name }}</p>
+        </div>
         <a href="{% url 'connections:connection_list' %}" class="btn btn-outline-secondary">
             <i class="bi bi-arrow-left"></i> Back to List
         </a>
@@ -26,70 +29,170 @@
                 <dd class="col-sm-9">
                     <span class="badge 
                         {% if connection.status == 'ACTIVE' %}bg-success
-                        {% elif connection.status == 'PENDING_AUTH' %}bg-warning text-dark
+                        {% elif connection.status == 'PENDING' %}bg-info text-dark
                         {% elif connection.status == 'ERROR' %}bg-danger
-                        {% elif connection.status == 'DISABLED' %}bg-secondary
-                        {% else %}bg-light text-dark
+                        {% else %}bg-secondary
                         {% endif %}">
                         {{ connection.get_status_display }}
                     </span>
                 </dd>
 
-                <dt class="col-sm-3">GCP Project ID</dt>
-                <dd class="col-sm-9">{{ gcp_project_id  }}</dd>
+                <dt class="col-sm-3">BigQuery Dataset ID</dt>
+                <dd class="col-sm-9">{{ connection.target_dataset_id }}</dd>
 
-                <dt class="col-sm-3">BigQuery Dataset</dt>
-                <dd class="col-sm-9">
-                    {{ connection.target_dataset_id }}
-                    <small class="text-muted">(Tables will be automatically deleted after 7 days)</small>
-                </dd>
-
-                <dt class="col-sm-3">DTS Config Name</dt>
-                <dd class="col-sm-9">{{ connection.dts_transfer_config_name|default:"Not configured" }}</dd>
-
-                {% if connection.data_source.name == 'GOOGLE_ADS' %}
+                {% if connection.data_source.name == 'GOOGLE_ADS' and connection.config.customer_id %}
                 <dt class="col-sm-3">Google Ads Customer ID</dt>
-                <dd class="col-sm-9">{{ connection.config_params.customer_id|default:"Not set" }}</dd>
+                <dd class="col-sm-9">{{ connection.config.customer_id }}</dd>
                 {% endif %}
 
                 <dt class="col-sm-3">OAuth Status</dt>
                 <dd class="col-sm-9">
-                    {% if connection.oauth_token %}
+                    {% if oauth_is_authenticated %}
                         <span class="badge bg-success">Authenticated</span>
-                        <small class="text-muted">(Expires: {{ connection.oauth_token_expires_at|date:"Y-m-d H:i:s" }})</small>
                     {% else %}
                         <span class="badge bg-warning text-dark">Not Authenticated</span>
                     {% endif %}
-                </dd>
-
-                <dt class="col-sm-3">Last Sync Status</dt>
-                <dd class="col-sm-9">
-                    {% if connection.last_sync_status %}
-                        <div class="alert {% if 'error' in connection.last_sync_status|lower %}alert-danger{% else %}alert-info{% endif %} mb-0">
-                            {{ connection.last_sync_status|linebreaksbr }}
-                        </div>
-                    {% else %}
-                        No sync information available
+                    <p class="small text-muted mb-0 mt-1">{{ oauth_auth_message }}</p>
+                    {% if not oauth_is_authenticated %}
+                        <a href="{% url 'connections:reauthorize_connection' connection.pk %}" class="btn btn-primary btn-sm mt-2">
+                            <i class="bi bi-shield-lock"></i> Re-authorize
+                        </a>
                     {% endif %}
                 </dd>
 
-                <dt class="col-sm-3">Created</dt>
-                <dd class="col-sm-9">{{ connection.created_at|date:"Y-m-d H:i:s" }}</dd>
+                <dt class="col-sm-3">Last Execution Status</dt>
+                <dd class="col-sm-9">
+                    {% if last_execution %}
+                        <div class="alert 
+                            {% if last_execution.status == 'SUCCESS' %}alert-success
+                            {% elif last_execution.status == 'FAILED' %}alert-danger
+                            {% else %}alert-info
+                            {% endif %} mb-0 p-2">
+                            <strong>{{ last_execution.get_status_display }}</strong> on {{ last_execution.finished_at|date:"Y-m-d H:i:s" }}
+                            {% if last_execution.message %}
+                                <hr class="my-1">
+                                <small class="d-block" style="white-space: pre-wrap;">{{ last_execution.message }}</small>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <span class="text-muted">No execution record found.</span>
+                    {% endif %}
+                </dd>
+                
+                <dt class="col-sm-3">Created / Updated</dt>
+                <dd class="col-sm-9">
+                    {{ connection.created_at|date:"Y-m-d H:i" }} / {{ connection.updated_at|date:"Y-m-d H:i" }}
+                </dd>
 
-                <dt class="col-sm-3">Last Updated</dt>
-                <dd class="col-sm-9">{{ connection.updated_at|date:"Y-m-d H:i:s" }}</dd>
+                <dt class="col-sm-3">Full Configuration</dt>
+                <dd class="col-sm-9">
+                    <details>
+                        <summary style="cursor: pointer; color: #0d6efd;">Click to expand/collapse</summary>
+                        <pre class="bg-light p-2 border rounded mt-2" style="white-space: pre-wrap; word-break: break-all;"><code>{{ connection.config|pprint }}</code></pre>
+                    </details>
+                </dd>
             </dl>
         </div>
-        <div class="card-footer">
-            {% if not connection.oauth_token %}
-                <a href="{% url 'connections:reauthorize_connection' connection.pk %}" class="btn btn-primary">
-                    <i class="bi bi-google"></i> Authorize Access
-                </a>
-            {% endif %}
-            <a href="{% url 'connections:connection_delete' connection.pk %}" class="btn btn-danger float-end">
-                <i class="bi bi-trash"></i> Delete Connection
-            </a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Update Sync Schedule & Status</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% url 'connections:connection_update' connection.pk %}">
+                {% csrf_token %}
+
+                <div class="form-check form-switch form-control-lg mb-4">
+                    <input class="form-check-input" type="checkbox" role="switch" id="id_is_enabled" name="is_enabled" {% if connection.is_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="id_is_enabled">
+                        Connection Status: 
+                        <span class="badge {% if connection.is_enabled %}bg-success{% else %}bg-secondary{% endif %}">
+                            {% if connection.is_enabled %}ON{% else %}OFF{% endif %}
+                        </span>
+                    </label>
+                    <div class="form-text">If disabled(OFF), this connection will not be synced the data to BigQuery.</div>
+                </div>
+
+                <div class="row align-items-end">
+                    <div class="col-md-3 mb-3">
+                        <label for="id_sync_frequency" class="form-label">Sync Frequency</label>
+                        <select name="sync_frequency" id="id_sync_frequency" class="form-select">
+                            <option value="once" {% if sync_settings.sync_frequency == 'once' %}selected{% endif %}>Once</option>
+                            <option value="daily" {% if sync_settings.sync_frequency == 'daily' %}selected{% endif %}>Daily</option>
+                            <option value="weekly" {% if sync_settings.sync_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                            <option value="monthly" {% if sync_settings.sync_frequency == 'monthly' %}selected{% endif %}>Monthly</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="id_sync_hour" class="form-label">Hour (24h)</label>
+                        <select name="sync_hour" id="id_sync_hour" class="form-select">
+                            {% for hour_choice in sync_hour_choices %}
+                            <option value="{{ hour_choice }}" {% if sync_settings.sync_hour == hour_choice %}selected{% endif %}>{{ hour_choice }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label for="id_sync_minute" class="form-label">Minute</label>
+                        <select name="sync_minute" id="id_sync_minute" class="form-select">
+                            {% for minute_choice in sync_minute_choices %}
+                            <option value="{{ minute_choice }}" {% if sync_settings.sync_minute == minute_choice %}selected{% endif %}>{{ minute_choice }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div id="weekly-options" class="mb-3 {% if sync_settings.sync_frequency != 'weekly' %}d-none{% endif %}">
+                    <label for="id_weekly_day_of_week" class="form-label">Day of Week</label>
+                    <select name="weekly_day_of_week" id="id_weekly_day_of_week" class="form-select" style="max-width: 250px;">
+                        <option value="1" {% if sync_settings.weekly_day_of_week == '1' %}selected{% endif %}>Monday</option>
+                        <option value="2" {% if sync_settings.weekly_day_of_week == '2' %}selected{% endif %}>Tuesday</option>
+                        <option value="3" {% if sync_settings.weekly_day_of_week == '3' %}selected{% endif %}>Wednesday</option>
+                        <option value="4" {% if sync_settings.weekly_day_of_week == '4' %}selected{% endif %}>Thursday</option>
+                        <option value="5" {% if sync_settings.weekly_day_of_week == '5' %}selected{% endif %}>Friday</option>
+                        <option value="6" {% if sync_settings.weekly_day_of_week == '6' %}selected{% endif %}>Saturday</option>
+                        <option value="0" {% if sync_settings.weekly_day_of_week == '0' %}selected{% endif %}>Sunday</option>
+                    </select>
+                </div>
+                
+                <div id="monthly-options" class="mb-3 {% if sync_settings.sync_frequency != 'monthly' %}d-none{% endif %}">
+                    <label for="id_monthly_day_of_month" class="form-label">Day of Month</label>
+                    <input type="number" name="monthly_day_of_month" value="{{ sync_settings.monthly_day_of_month }}" min="1" max="31" id="id_monthly_day_of_month" class="form-control" style="max-width: 250px;">
+                </div>
+
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-save"></i> Update
+                </button>
+            </form>
         </div>
     </div>
+    
+    <div class="d-flex justify-content-end gap-2">
+        <a href="{% url 'connections:connection_clone' connection.pk %}" class="btn btn-secondary">
+           <i class="bi bi-copy"></i> Copy to New Connection
+       </a>
+        <a href="{% url 'connections:connection_delete' connection.pk %}" class="btn btn-danger">
+           <i class="bi bi-trash"></i> Delete Connection
+       </a>
+   </div>
+
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const syncFrequencySelect = document.getElementById('id_sync_frequency');
+    const weeklyOptions = document.getElementById('weekly-options');
+    const monthlyOptions = document.getElementById('monthly-options');
+
+    function toggleScheduleOptions() {
+        const selectedValue = syncFrequencySelect.value;
+        weeklyOptions.style.display = selectedValue === 'weekly' ? 'block' : 'none';
+        monthlyOptions.style.display = selectedValue === 'monthly' ? 'block' : 'none';
+    }
+
+    syncFrequencySelect.addEventListener('change', toggleScheduleOptions);
+});
+</script>
 {% endblock %}

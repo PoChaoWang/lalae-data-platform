@@ -249,32 +249,6 @@ def check_auth_status(request):
     except SocialAccount.DoesNotExist:
         return JsonResponse({"is_authorized": False, "email": ""})
 
-
-def get_google_context_data(self, context, source_name, client):
-    """Handle Google-specific context data for ConnectionCreateView"""
-    if source_name in [
-        "GOOGLE_ADS",
-        "YOUTUBE_CHANNEL",
-        "GOOGLE_AD_MANAGER",
-        "GOOGLE_PLAY",
-    ]:
-        context["requires_oauth"] = True
-        if client.is_oauth_authorized():
-            context["oauth_status"] = "authorized"
-            if client.google_social_account and hasattr(
-                client.google_social_account, "extra_data"
-            ):
-                context["google_account_email"] = (
-                    client.google_social_account.extra_data.get("email", "")
-                )
-            else:
-                context["google_account_email"] = ""
-        else:
-            context["oauth_status"] = "not_authorized"
-    return context
-
-
-
 def build_custom_gaql(config, date_range_str="LAST_30_DAYS"):
     """根據 connection.config 動態生成 GAQL。"""
     resource = config.get("resource_name")
@@ -382,48 +356,43 @@ def run_custom_gaql_and_save(connection_instance, request=None):
         return False, f"An unexpected error occurred: {e}"
 
 def get_google_ads_page_context(client):
+    
     context = {
         'oauth_status': 'not_authorized',
         'google_account_email': '',
         'google_fields_json': '{}'
     }
 
+    # --- 1. 檢查授權狀態 ---
+
     if client and client.is_oauth_authorized():
         context['oauth_status'] = 'authorized'
         if client.google_social_account and hasattr(client.google_social_account, 'extra_data'):
             context['google_account_email'] = client.google_social_account.extra_data.get('email', '')
 
+    # --- 2. 準備 Google Ads 欄位資料 ---
     try:
         fields = GoogleAdsField.objects.all()
-        
-        # 建立一個巢狀字典的根
         fields_tree = {}
-
         for field in fields:
             parts = field.field_name.split('.')
             current_level = fields_tree
-            
-            for part in parts[:-1]: # 遍歷路徑的每一部分，除了最後一個 (葉子節點)
+            for part in parts[:-1]:
                 if part not in current_level:
-                    current_level[part] = {} # 如果路徑不存在，就建立一個新的字典
+                    current_level[part] = {}
                 current_level = current_level[part]
-            
-            # 最後一部分是葉子節點，儲存完整資訊
             leaf_key = parts[-1]
             current_level[leaf_key] = {
-                "_is_leaf": True, # 標記為葉子節點
+                "_is_leaf": True,
                 "full_name": field.field_name,
-                "display_name": field.display_name or field.field_name # 提供備用顯示名稱
+                "display_name": field.display_name or field.field_name
             }
-
-        # 將 Python 字典轉換為 JSON 字串
         context['google_fields_json'] = json.dumps(fields_tree)
         logger.info(f"Successfully built a nested tree context with {len(fields)} Google Ads fields.")
-
     except Exception as e:
         logger.error(f"Failed to build Google Ads fields tree context: {e}", exc_info=True)
-        context['google_fields_json'] = '{}'
-            
+
+    
     return context
 
 def get_google_credentials(client_id, user):
@@ -491,3 +460,55 @@ def get_google_credentials(client_id, user):
         logger.error(f"An unexpected error occurred in get_google_credentials: {e}", exc_info=True)
     
     return None
+
+class GoogleAdsAPIClient:
+    def __init__(self, connection):
+        self.connection = connection
+        self.client = self._get_client()
+
+    def _get_client(self):
+        social_account = self.connection.social_account
+        if not social_account:
+            raise Exception("Connection lacks a linked Google account.")
+        
+        social_token = SocialToken.objects.get(account=social_account)
+        
+        # 在初始化時就檢查並刷新 token
+        if social_token.expires_at and social_token.expires_at <= timezone.now():
+            if not _refresh_user_social_token(social_token):
+                raise Exception("Failed to refresh expired Google Ads token.")
+        
+        google_ads_config = {
+            "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+            "client_id": social_token.app.client_id,
+            "client_secret": social_token.app.secret,
+            "refresh_token": social_token.token_secret,
+            "login_customer_id": self.connection.config.get("customer_id"),
+            "use_proto_plus": True
+        }
+        return GoogleAdsClient.load_from_dict(google_ads_config)
+
+    def run_query_and_save(self):
+        try:
+            google_ads_service = self.client.get_service("GoogleAdsService")
+            gaql_query = build_custom_gaql(self.connection.config)
+            customer_id = self.connection.config.get("customer_id")
+            
+            search_request = self.client.get_type("SearchGoogleAdsStreamRequest")
+            search_request.customer_id = customer_id
+            search_request.query = gaql_query
+            
+            stream = google_ads_service.search_stream(request=search_request)
+            table_name = f"ga_custom_{self.connection.id}"
+            
+            return save_results_to_bigquery(
+                stream,
+                settings.GOOGLE_CLOUD_PROJECT_ID,
+                self.connection.target_dataset_id,
+                table_name
+            )
+        except GoogleAdsException as ex:
+            errors = ". ".join([e.message for e in ex.failure.errors])
+            return False, f"Google Ads API Error: {errors}"
+        except Exception as e:
+            return False, f"An unexpected error occurred: {e}"

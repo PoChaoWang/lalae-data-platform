@@ -63,55 +63,41 @@ class Connection(models.Model):
         ('ERROR', 'Error'),       # 發生錯誤
     ]
     
-    # --- 核心關聯欄位 ---
+    # --- Core Columns ---
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     data_source = models.ForeignKey(DataSource, on_delete=models.CASCADE)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, null=True, blank=True)
     social_account = models.ForeignKey(
-        SocialAccount, 
-        on_delete=models.SET_NULL, # 建議用 SET_NULL，避免刪除 social account 時連帶刪除 connection
-        null=True, 
+        SocialAccount,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
-        help_text="關聯的社交帳號用於 OAuth"
+        help_text="Only set if the data source requires OAuth authentication."
     )
 
-    # --- 基本資訊 ---
+    # --- Basic Settings ---
     display_name = models.CharField(max_length=200)
     target_dataset_id = models.CharField(max_length=200)
     config = models.JSONField(default=dict, blank=True)
     
-    # --- 狀態與同步紀錄 (合併後的版本) ---
+    # --- Status ---
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default='ACTIVE'
     )
-    last_sync_time = models.DateTimeField(
-        null=True, 
-        blank=True,
-        help_text="The timestamp of the last sync attempt."
-    )
-    last_sync_status = models.TextField(
-        null=True, 
-        blank=True,
-        help_text="A message describing the result of the last sync (e.g., SUCCESS, or the error message)."
-    )
-    last_sync_record_count = models.IntegerField(
-        null=True, 
-        blank=True,
-        help_text="The number of records fetched in the last successful sync."
+    is_enabled = models.BooleanField(
+        default=True,
+        help_text="控制此連線的排程是否啟用 (On/Off)"
     )
 
-    # --- 時間戳 ---
+    # --- Timestamp ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
-    # --- 其他特定用途欄位 (例如 Google DTS) ---
-    dts_transfer_config_name = models.CharField(max_length=255, null=True, blank=True)
 
     class Meta:
         unique_together = ['user', 'data_source', 'display_name']
-    
+
     def __str__(self):
         return f"{self.display_name} ({self.data_source.get_name_display()})"
     
@@ -140,17 +126,56 @@ class Connection(models.Model):
         # 實作 token 刷新邏輯
         pass
 
+class ConnectionExecution(models.Model):
+    STATUS_CHOICES = [
+        ('RUNNING', 'Running'),
+        ('SUCCESS', 'Success'),
+        ('FAILED', 'Failed'),
+    ]
+    TRIGGER_CHOICES = [
+        ('SYSTEM', 'System'),
+        ('MANUAL', 'Manual'),
+    ]
+
+    connection = models.ForeignKey(Connection, on_delete=models.CASCADE, related_name='executions')
+    triggered_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, help_text="If the task was triggered by a user")
+    trigger_method = models.CharField(max_length=20, choices=TRIGGER_CHOICES, default='SYSTEM')
+
+    # --- 執行結果 ---
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    message = models.TextField(blank=True, null=True, help_text="Result message")
+    record_count = models.IntegerField(null=True, blank=True, help_text="Sync record count")
+
+    # --- 執行當下的快照 ---
+    config_snapshot = models.JSONField(help_text="Connection config at the time of execution")
+    display_name_snapshot = models.CharField(max_length=200, help_text="Display name at the time of execution")
+    target_dataset_id_snapshot = models.CharField(max_length=200, help_text="Target dataset ID at the time of execution")
+
+    # --- 時間戳 ---
+    started_at = models.DateTimeField(auto_now_add=True, help_text="Task start time")
+    finished_at = models.DateTimeField(null=True, blank=True, help_text="Task finish time")
+
+    class Meta:
+        verbose_name = "Connection Execution"
+        verbose_name_plural = "Connection Executions"
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f" {self.display_name_snapshot} execution @ {self.started_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+
 class GoogleAdsField(models.Model):
-    """儲存從 Google Ads API 獲取的欄位元數據"""
     CATEGORY_CHOICES = [
         ('ATTRIBUTE', 'Attribute'),
         ('METRIC', 'Metric'),
         ('SEGMENT', 'Segment'),
     ]
 
-    field_name = models.CharField(max_length=255, unique=True, help_text="完整的 API 欄位名稱，例如 'metrics.clicks'")
-    display_name = models.CharField(max_length=255, help_text="顯示在 UI 上的名稱，例如 'Clicks'")
+    field_name = models.CharField(max_length=255, unique=True, help_text="Full API field name, e.g. 'metrics.clicks'")
+    display_name = models.CharField(max_length=255, help_text="UI display name, e.g. 'Clicks'")
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, db_index=True)
+    group = models.CharField(max_length=50, blank=True, null=True, help_text="User-friendly group name")
     data_type = models.CharField(max_length=50)
     is_selectable = models.BooleanField(default=False)
     

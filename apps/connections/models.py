@@ -178,6 +178,8 @@ class GoogleAdsField(models.Model):
     group = models.CharField(max_length=50, blank=True, null=True, help_text="User-friendly group name")
     data_type = models.CharField(max_length=50)
     is_selectable = models.BooleanField(default=False)
+
+    compatible_fields = models.ManyToManyField('self', symmetrical=False, related_name='+', blank=True)
     
     class Meta:
         verbose_name = "Google Ads Field"

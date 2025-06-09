@@ -56,6 +56,7 @@ from .apis.facebook_ads import (
 )
 
 from .tasks import sync_connection_data_task
+from itertools import chain
 
 logger = logging.getLogger(__name__)
 
@@ -899,4 +900,59 @@ def facebook_oauth_callback(request):
     
     return redirect("connections:connection_list")
 
+@require_http_methods(["GET"])
+def get_compatible_google_ads_fields_api(request):
+    """
+    一個 API 端點，根據提供的 resource_name，回傳可用的欄位。
+    """
+    resource_name = request.GET.get('resource')
+    if not resource_name:
+        return JsonResponse({'error': 'Resource parameter is required.'}, status=400)
+
+    try:
+        # 1. 找到 Resource 物件
+        resource_field = GoogleAdsField.objects.get(field_name=resource_name, category='RESOURCE')
+
+        # 2. 透過我們建立的 `compatible_fields` 關聯，獲取所有可用的欄位
+        compatible_fields = resource_field.compatible_fields.all()
+        own_attributes = GoogleAdsField.objects.filter(
+            Q(category='ATTRIBUTE') & Q(field_name__startswith=f"{resource_name}.")
+        )
+        all_fields = sorted(
+            list(set(chain(compatible_fields, own_attributes))),
+            key=lambda x: (x.category, x.field_name)
+        )
+        
+        # 3. 將結果分類打包成 JSON
+        response_data = {
+            'metrics': [],
+            'segments': [],
+            'attributes': [] # 有些 Resource 也會關聯到其他 ATTRIBUTE
+        }
+        
+        for field in all_fields:
+            full_name = field.field_name
+
+            parts = full_name.split('.')
+            display_name = ('.'.join(parts[1:]) if len(parts) > 1 else full_name).replace('_', ' ')
+
+            field_data = {
+                'name': full_name,         
+                'display': display_name    
+            }
+            
+            if field.category == 'METRIC':
+                response_data['metrics'].append(field_data)
+            elif field.category == 'SEGMENT':
+                response_data['segments'].append(field_data)
+            elif field.category == 'ATTRIBUTE':
+                 response_data['attributes'].append(field_data)
+
+        return JsonResponse(response_data)
+
+    except GoogleAdsField.DoesNotExist:
+        return JsonResponse({'error': f'Resource "{resource_name}" not found.'}, status=404)
+    except Exception as e:
+        logger.error(f"API Error in get_compatible_google_ads_fields_api: {e}", exc_info=True)
+        return JsonResponse({'error': 'An internal server error occurred.'}, status=500)
 

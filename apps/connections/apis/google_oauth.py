@@ -250,25 +250,40 @@ def check_auth_status(request):
         return JsonResponse({"is_authorized": False, "email": ""})
 
 def build_custom_gaql(config, date_range_str="LAST_30_DAYS"):
-    """根據 connection.config 動態生成 GAQL。"""
+    """
+    Dynamically generates GAQL based on the new connection.config structure.
+    """
     resource = config.get("resource_name")
+    
+    # 從 config 讀取三種類型的欄位列表
     metrics = config.get("metrics", [])
     segments = config.get("segments", [])
+    attributes = config.get("attributes", [])
 
-    if not resource or not metrics:
-        raise ValueError("Resource name and at least one metric are required.")
+    if not resource:
+        raise ValueError("Resource name is required to build a GAQL query.")
+        
+    # 合併所有欄位
+    all_fields = metrics + segments + attributes
 
-    all_fields = metrics + segments
+    if not all_fields:
+        raise ValueError("At least one metric, segment, or attribute is required.")
+
+    # 確保 segments.date 總是存在，以進行時間範圍過濾
     if 'segments.date' not in all_fields:
         all_fields.append('segments.date')
-    select_clause = ", ".join(sorted(list(set(all_fields)))) # 排序並移除重複
+        
+    # 移除重複的欄位並排序，以生成一個乾淨的 SELECT 子句
+    select_clause = ", ".join(sorted(list(set(all_fields))))
 
+    # 建立最終的查詢
     query = f"SELECT {select_clause} FROM {resource} WHERE segments.date DURING {date_range_str}"
+    
     logger.info(f"Built GAQL: {query}")
     return query
 
 def save_results_to_bigquery(results, project_id, dataset_id, table_name):
-    """將 Google Ads API 的查詢結果轉換為 Pandas DataFrame 並上傳到 BigQuery。"""
+    """Saves Google Ads API query results to BigQuery."""
     if not results:
         logger.info("No results to save to BigQuery.")
         return True, "No data returned from Google Ads for the selected period."
@@ -276,46 +291,81 @@ def save_results_to_bigquery(results, project_id, dataset_id, table_name):
     try:
         client = bigquery.Client(project=project_id)
         rows_list = []
+        # The structure of results from search_stream is different.
+        # It's an iterator of SearchGoogleAdsStreamResponse objects.
         for batch in results:
             for row in batch.results:
-                row_dict = {}
-                for field_name, value in row._pb.items():
-                    # 簡單地將 . 換成 _ 以符合 BigQuery 欄位命名規則
-                    formatted_name = field_name.replace('.', '_')
-                    row_dict[formatted_name] = value
-                rows_list.append(row_dict)
+                # Use json.loads and google.protobuf.json_format to handle conversion
+                row_dict = json.loads(
+                    google_ads_client.get_service("GoogleAdsService")._client.protobuf.json_format.MessageToJson(row._pb)
+                )
+                
+                # Flatten the dictionary
+                flat_row = {}
+                def flatten_dict(d, parent_key='', sep='_'):
+                    items = []
+                    for k, v in d.items():
+                        new_key = parent_key + sep + k if parent_key else k
+                        if isinstance(v, dict):
+                            items.extend(flatten_dict(v, new_key, sep=sep).items())
+                        else:
+                            items.append((new_key, v))
+                    return dict(items)
+
+                flat_row = flatten_dict(row_dict)
+                rows_list.append(flat_row)
         
         if not rows_list:
-            return True, "Query returned no rows."
+            logger.info("Query returned results, but processed list is empty.")
+            return True, "Query returned no rows after processing."
 
         df = pd.DataFrame(rows_list)
         
+        # Data cleaning and transformation
         for col in df.columns:
-            if 'cost_micros' in col or 'cpc_micros' in col:
-                df[col] = df[col] / 1_000_000
+            if 'costMicros' in col or 'cpcMicros' in col:
+                # The keys will be camelCase from the JSON conversion
+                new_col_name = col.replace('Micros', '')
+                df[new_col_name] = pd.to_numeric(df[col], errors='coerce') / 1_000_000
+                df = df.drop(columns=[col])
+
+        # Standardize column names (snake_case)
+        df.columns = [
+            ''.join(['_' + i.lower() if i.isupper() else i for i in col]).lstrip('_')
+            for col in df.columns
+        ]
 
         table_id = f"{project_id}.{dataset_id}.{table_name}"
-        job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
+        job_config = bigquery.LoadJobConfig(
+            write_disposition="WRITE_TRUNCATE",
+            autodetect=True, # Let BigQuery infer the schema
+        )
         job = client.load_table_from_dataframe(df, table_id, job_config=job_config)
-        job.result()
+        job.result() # Wait for the job to complete
         msg = f"Successfully loaded {len(df)} rows to {table_id}."
         logger.info(msg)
         return True, msg
+
     except Exception as e:
         logger.error(f"Failed to save to BigQuery: {e}", exc_info=True)
         return False, f"Failed to save to BigQuery: {e}"
     
+    
 def run_custom_gaql_and_save(connection_instance, request=None):
-    """新的主要執行函式，取代 setup_dts_transfer。"""
+    """The main execution function."""
     try:
         social_account = connection_instance.social_account
-        if not social_account: return False, "Connection lacks a linked Google account."
+        if not social_account:
+            return False, "Connection lacks a linked Google account."
         
         social_token = SocialToken.objects.get(account=social_account)
         
         if social_token.expires_at and social_token.expires_at <= timezone.now():
             if not _refresh_user_social_token(social_token, request):
                 return False, "Failed to refresh expired token."
+        
+        # Use the global google_ads_client variable defined at the module level
+        global google_ads_client
         
         google_ads_config = {
             "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
@@ -326,8 +376,10 @@ def run_custom_gaql_and_save(connection_instance, request=None):
             "use_proto_plus": True
         }
         
+        # Initialize client here to be used in save_results_to_bigquery
         google_ads_client = GoogleAdsClient.load_from_dict(google_ads_config)
         google_ads_service = google_ads_client.get_service("GoogleAdsService")
+
         gaql_query = build_custom_gaql(connection_instance.config)
         customer_id = connection_instance.config.get("customer_id")
         
@@ -337,8 +389,7 @@ def run_custom_gaql_and_save(connection_instance, request=None):
         
         stream = google_ads_service.search_stream(request=search_request)
 
-        # 建立一個唯一的 table_name
-        table_name = f"ga_custom_{connection_instance.id}"
+        table_name = f"ga_{connection_instance.config.get('resource_name')}_{connection_instance.id.hex[:8]}"
         
         return save_results_to_bigquery(
             stream,
@@ -356,42 +407,27 @@ def run_custom_gaql_and_save(connection_instance, request=None):
         return False, f"An unexpected error occurred: {e}"
 
 def get_google_ads_page_context(client):
-    
+    """Prepares context data for the Google Ads connection form page."""
     context = {
         'oauth_status': 'not_authorized',
         'google_account_email': '',
         'google_fields_json': '{}'
     }
 
-    # --- 1. 檢查授權狀態 ---
-
     if client and client.is_oauth_authorized():
         context['oauth_status'] = 'authorized'
         if client.google_social_account and hasattr(client.google_social_account, 'extra_data'):
             context['google_account_email'] = client.google_social_account.extra_data.get('email', '')
 
-    # --- 2. 準備 Google Ads 欄位資料 ---
     try:
+        # No need to build a tree anymore if we use the accordion UI
         fields = GoogleAdsField.objects.all()
-        fields_tree = {}
-        for field in fields:
-            parts = field.field_name.split('.')
-            current_level = fields_tree
-            for part in parts[:-1]:
-                if part not in current_level:
-                    current_level[part] = {}
-                current_level = current_level[part]
-            leaf_key = parts[-1]
-            current_level[leaf_key] = {
-                "_is_leaf": True,
-                "full_name": field.field_name,
-                "display_name": field.display_name or field.field_name
-            }
-        context['google_fields_json'] = json.dumps(fields_tree)
-        logger.info(f"Successfully built a nested tree context with {len(fields)} Google Ads fields.")
+        # The new accordion UI does not require the complex JSON tree.
+        # The dynamic API call handles the field loading.
+        # We can leave google_fields_json as '{}'.
+        logger.info(f"Context prepared for Google Ads page.")
     except Exception as e:
-        logger.error(f"Failed to build Google Ads fields tree context: {e}", exc_info=True)
-
+        logger.error(f"Failed to prepare Google Ads page context: {e}", exc_info=True)
     
     return context
 

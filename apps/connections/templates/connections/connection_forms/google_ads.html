@@ -1,35 +1,56 @@
 <div class="mb-3">
-    <label for="{{ form.customer_id.id_for_label }}" class="form-label">Google Ads Customer ID</label>
+    <label for="{{ form.customer_id.id_for_label }}" class="form-label">{{ form.customer_id.label }}</label>
     {{ form.customer_id }}
+    {% if form.customer_id.errors %}
+    <div class="invalid-feedback d-block">
+        {{ form.customer_id.errors|first }}
+    </div>
+    {% endif %}
 </div>
 
 <div class="mb-3">
-    <label for="{{ form.resource_name.id_for_label }}" class="form-label">Report Level (Resource)</label>
+    <label for="{{ form.resource_name.id_for_label }}" class="form-label">{{ form.resource_name.label }}</label>
     {{ form.resource_name }}
-    <div class="form-text">Select the primary resource for your report.</div>
+    {% if form.resource_name.errors %}
+    <div class="invalid-feedback d-block">
+        {{ form.resource_name.errors|first }}
+    </div>
+    {% endif %}
 </div>
 
-<hr/>
+<div id="google-fields-selector-container" style="display: none;">
+    <div class="row">
+        <div class="col-md-6">
+            <h6>Available Fields</h6>
+            <div id="fields-loading-spinner" class="text-center p-5" style="display: none;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
 
-<div class="mb-4">
-    <label class="form-label">Selected Fields</label>
-    <div id="google_selected_fields_display" class="selected-items-container">
-        <span class="text-muted fs-small">No fields selected.</span>
+            <div id="fields-accordion">
+                </div>
+        </div>
+
+        <div class="col-md-6">
+            <h6>Selected Fields</h6>
+            <div id="google-selected-fields-display" class="selected-items-container">
+                <span class="text-muted fs-small">Please select a resource first.</span>
+            </div>
+        </div>
     </div>
 </div>
 
-<div>
-    <label class="form-label">Available Fields</label>
-    <input type="text" id="google_fields_search" class="form-control form-control-sm mb-1" placeholder="Search fields...">
-    
-    <div id="google_fields_tree_container" class="field-tree-container"></div>
+<div id="hidden-inputs-container"></div>
 
-    <div style="display: none;">
-        {{ form.selected_fields }}
-    </div>
-</div>
+<!-- <div style="display: none;">
+    {{ form.selected_metrics }}
+    {{ form.selected_segments }}
+    {{ form.selected_attributes }}
+</div> -->
+
 <style>
-    .selected-items-container { min-height: 150px; max-height: 150px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem; }
+    .selected-items-container { min-height: 150px; max-height: 400px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.5rem; }
     .selected-item { display: inline-flex; align-items: center; background-color: #e9ecef; border: 1px solid #ced4da; border-radius: 0.25rem; padding: 0.2rem 0.6rem; margin: 0.2rem; font-size: 0.875rem; }
     .selected-item-remove { cursor: pointer; margin-left: 0.5rem; font-weight: bold; font-size: 1.2rem; line-height: 1; }
 

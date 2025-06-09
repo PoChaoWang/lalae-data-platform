@@ -219,474 +219,14 @@
 {% block extra_js %}
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-    // =================================================================
-    // 功能 0：前端驗證邏輯
-    // =================================================================
-    const submitButton = document.getElementById('submitButton');
-    const form = document.getElementById('connectionForm');
-    const errorContainer = document.getElementById('form-validation-errors');
-    const errorList = document.getElementById('form-error-list');
-    let googleSelectedFieldsSet = null;
-
-    submitButton.addEventListener('click', function(event) {
-        // 阻止預設行為
-        event.preventDefault();
-        
-        // 執行驗證
-        if (validateForm()) {
-            // 如果驗證通過，提交表單
-            form.submit();
-        }
-    });
-
-    function validateForm() {
-        // 清空舊的錯誤訊息
-        errorList.innerHTML = '';
-        const errors = [];
-        
-        // --- 通用驗證 (connection_form.html) ---
-        // 1. 授權狀態
-        const authStatusDiv = document.querySelector('#authStatus [data-status], #facebookAuthStatus [data-status]');
-        if (authStatusDiv && authStatusDiv.dataset.status === 'not-authorized') {
-            errors.push('Authorization Status cannot be "Not authorized". Please authorize the account.');
-        }
-
-        // 2. Connection Name
-        const connectionName = document.getElementById('{{ form.display_name.id_for_label }}');
-        if (connectionName && connectionName.value.trim() === '') {
-            errors.push('Connection Name cannot be blank.');
-        }
-
-        // 3. Target Dataset ID
-        const targetDatasetId = document.getElementById('{{ form.target_dataset_id.id_for_label }}');
-        if (targetDatasetId && targetDatasetId.value.trim() === '') {
-            errors.push('Target Dataset ID cannot be blank.');
-        }
-
-        // 4. Sync Frequency (Monthly)
-        const syncFrequency = document.getElementById('{{ form.sync_frequency.id_for_label }}');
-        const dayOfMonth = document.getElementById('{{ form.monthly_day_of_month.id_for_label }}');
-        if (syncFrequency && syncFrequency.value === 'monthly' && dayOfMonth && dayOfMonth.value.trim() === '') {
-            errors.push('Day of Month cannot be blank when Sync Frequency is set to Monthly.');
-        }
-        
-        const dataSourceName = "{{ data_source.name }}";
-
-        // --- Google Ads 專屬驗證 ---
-        if (dataSourceName === 'GOOGLE_ADS') {
-            // 1. Google Ads Customer ID
-            const customerId = document.getElementById('{{ form.customer_id.id_for_label }}');
-            if (customerId && customerId.value.trim() === '') {
-                errors.push('Google Ads Customer ID cannot be blank.');
-            } else if (customerId && customerId.value.includes('-')) {
-                errors.push('Google Ads Customer ID cannot contain hyphens (-).');
-            }
-
-            // 2. Selected Fields
-            if (googleSelectedFieldsSet && googleSelectedFieldsSet.size === 0) {
-                 errors.push('Selected Fields for Google Ads cannot be empty.');
-            }
-             // 3. Date Range (假設與 Facebook 結構相同)
-            const googleDateRangeType = document.querySelector('input[name="date_range_type"]:checked');
-            if (googleDateRangeType && googleDateRangeType.value === 'custom') {
-                const startDate = document.getElementById('{{ form.date_since.id_for_label }}');
-                const endDate = document.getElementById('{{ form.date_until.id_for_label }}');
-                if (startDate && startDate.value.trim() === '') {
-                    errors.push('Start Date cannot be blank for a Custom Date Range.');
-                }
-                if (endDate && endDate.value.trim() === '') {
-                    errors.push('End Date cannot be blank for a Custom Date Range.');
-                }
-            }
-        }
-
-        // --- Facebook Ads 專屬驗證 ---
-        if (dataSourceName === 'FACEBOOK_ADS') {
-            // 1. Fields
-            const fbSelectedFields = document.getElementById('id_selected_fields');
-            if (fbSelectedFields && fbSelectedFields.selectedOptions.length === 0) {
-                errors.push('Fields for Facebook Ads cannot be empty.');
-            }
-            const fbSelecteAccountId = document.getElementById('id_facebook_ad_account_id');
-            if (fbSelecteAccountId && fbSelecteAccountId.value.trim() === '') {
-                errors.push('Facebook Ads Account ID cannot be blank.');
-            }
-            // 2. Date Range Selection
-            const fbDateRangeType = document.querySelector('input[name="{{ form.date_range_type.html_name }}"]:checked');
-            if (fbDateRangeType && fbDateRangeType.value === 'custom') {
-                const startDate = document.getElementById('{{ form.date_since.id_for_label }}');
-                const endDate = document.getElementById('{{ form.date_until.id_for_label }}');
-                if (startDate && startDate.value.trim() === '') {
-                    errors.push('Start Date cannot be blank for a Custom Date Range.');
-                }
-                if (endDate && endDate.value.trim() === '') {
-                    errors.push('End Date cannot be blank for a Custom Date Range.');
-                }
-            }
-        }
-
-        // --- 顯示錯誤或回傳成功 ---
-        if (errors.length > 0) {
-            errors.forEach(function(error) {
-                const li = document.createElement('li');
-                li.textContent = error;
-                errorList.appendChild(li);
-            });
-            errorContainer.style.display = 'block';
-            window.scrollTo(0, 0); // 將頁面滾動到頂部以顯示錯誤
-            return false;
-        } else {
-            errorContainer.style.display = 'none';
-            return true;
-        }
-    }
-
-    // =================================================================
-    // 功能 1：處理 Sync Frequency 的顯示/隱藏
-    // =================================================================
-    const syncFrequency = document.getElementById('{{ form.sync_frequency.id_for_label }}');
-    const weeklyOptions = document.getElementById('weekly-options');
-    const monthlyOptions = document.getElementById('monthly-options');
-
-    function updateSyncOptionsVisibility() {
-        if (!syncFrequency) return;
-        const value = syncFrequency.value;
-        if (weeklyOptions) weeklyOptions.style.display = value === 'weekly' ? 'block' : 'none';
-        if (monthlyOptions) monthlyOptions.style.display = value === 'monthly' ? 'block' : 'none';
-    }
-
-    if (syncFrequency) {
-        syncFrequency.addEventListener('change', updateSyncOptionsVisibility);
-        updateSyncOptionsVisibility();
-    }   
-    // =================================================================
-    // 功能 2：處理 欄位選擇 UI
-    // =================================================================
-    if ("{{ data_source.name }}" === "FACEBOOK_ADS") {
-        
-        const allFacebookFields = JSON.parse('{{ facebook_fields_json|escapejs }}');
-        const insightsLevelSelect = document.getElementById('id_insights_level');
-        
-        const uiSelectors = {
-            breakdowns: document.getElementById('breakdowns_ui_selector'),
-            action_breakdowns: document.getElementById('action_breakdowns_ui_selector'),
-            fields: document.getElementById('fields_ui_selector')
-        };
-
-        const widgetSelectors = {
-            breakdowns: document.getElementById('id_selected_breakdowns'),
-            action_breakdowns: document.getElementById('id_selected_action_breakdowns'),
-            fields: document.getElementById('id_selected_fields')
-        };
-
-        const displayContainers = {
-            breakdowns: document.getElementById('selectedBreakdownsDisplay'),
-            action_breakdowns: document.getElementById('selectedActionBreakdownsDisplay'),
-            fields: document.getElementById('selectedFieldsDisplay')
-        };
-        
-        const placeholders = {
-            breakdowns: 'No breakdowns selected.',
-            action_breakdowns: 'No action breakdowns selected.',
-            fields: 'No fields selected. You must select at least one.'
-        }
-
-        function createSelectedItemElement(optionValue, optionText, category) {
-            const item = document.createElement('span');
-            item.className = 'selected-item';
-            item.dataset.value = optionValue;
-            
-            const textSpan = document.createElement('span');
-            textSpan.textContent = optionText;
-            
-            const removeBtn = document.createElement('span');
-            removeBtn.className = 'remove-btn';
-            removeBtn.innerHTML = '&times;';
-            removeBtn.title = `Remove ${optionText}`;
-            removeBtn.onclick = function() {
-                const widgetOption = Array.from(widgetSelectors[category].options).find(opt => opt.value === optionValue);
-                if (widgetOption) {
-                    widgetOption.selected = false;
-                    renderSelectedTagsAndHighlights(category);
-                }
-            };
-            item.appendChild(textSpan);
-            item.appendChild(removeBtn);
-            return item;
-        }
-
-        function renderSelectedTagsAndHighlights(category) {
-            const widget = widgetSelectors[category];
-            const display = displayContainers[category];
-            const uiSelector = uiSelectors[category];
-
-            if (!widget || !display || !uiSelector) return;
-            
-            display.innerHTML = '';
-            let hasSelection = false;
-            const selectedValues = new Set();
-
-            Array.from(widget.options).forEach(option => {
-                if (option.selected) {
-                    hasSelection = true;
-                    selectedValues.add(option.value);
-                    // 這行負責在右邊顯示標籤
-                    display.appendChild(createSelectedItemElement(option.value, option.text, category));
-                }
-            });
-
-            if (!hasSelection) {
-                const placeholder = document.createElement('span');
-                placeholder.className = 'text-muted fs-small';
-                placeholder.textContent = placeholders[category];
-                display.appendChild(placeholder);
-            }
-            
-            // 這段負責更新左邊選單的視覺高亮
-            Array.from(uiSelector.options).forEach(option => {
-                if (selectedValues.has(option.value)) {
-                    option.classList.add('is-selected-option');
-                } else {
-                    option.classList.remove('is-selected-option');
-                }
-            });
-        }
-        
-        function populateUISelector(category, fields) {
-            const selector = uiSelectors[category];
-            selector.innerHTML = '';
-            fields.forEach(field => {
-                const option = new Option(field.label, field.name);
-                selector.add(option);
-            });
-        }
-
-        function handleLevelChange() {
-            const level = insightsLevelSelect.value;
-            const levelKey = level === 'adset' ? 'ad_set' : level;
-            const levelData = allFacebookFields[levelKey] || { breakdowns: [], action_breakdowns: [], fields: [] };
-            
-            populateUISelector('breakdowns', levelData.breakdowns);
-            populateUISelector('action_breakdowns', levelData.action_breakdowns);
-            populateUISelector('fields', levelData.fields);
-            
-            ['breakdowns', 'action_breakdowns', 'fields'].forEach(category => {
-                const availableNames = new Set((levelData[category] || []).map(f => f.name));
-                const widget = widgetSelectors[category];
-                Array.from(widget.options).forEach(opt => {
-                    if (opt.selected && !availableNames.has(opt.value)) {
-                        opt.selected = false;
-                    }
-                });
-                renderSelectedTagsAndHighlights(category);
-            });
-        }
-        
-        // ============================================
-        // == 這裡是確保功能正常的最終互動邏輯 ==
-        // ============================================
-        function setupInteraction(category) {
-            const uiSelector = uiSelectors[category];
-            const widget = widgetSelectors[category];
-
-            // 1. 使用 'click' 事件來即時捕獲點擊
-            uiSelector.addEventListener('click', function (e) {
-                // 2. 阻止 <select multiple> 的預設行為，這樣就不需要按 Command 鍵
-                e.preventDefault();
-                
-                // 3. 找出被點擊的選項 (`this` 就是 uiSelector)
-                const clickedUiOption = this.options[this.selectedIndex];
-                if (!clickedUiOption) return;
-
-                // 4. 在隱藏的真實 widget 中找到對應的選項
-                const widgetOption = Array.from(widget.options).find(opt => opt.value === clickedUiOption.value);
-                
-                if (widgetOption) {
-                    // 5. 切換該選項的選中狀態 (點一下選取，再點一下取消)
-                    widgetOption.selected = !widgetOption.selected;
-                    
-                    // 6. 呼叫統一的 UI 更新函式來重繪右邊的標籤和左邊的高亮
-                    renderSelectedTagsAndHighlights(category);
-                }
-            });
-        }
-
-        // --- 初始化 ---
-        insightsLevelSelect.addEventListener('change', handleLevelChange);
-        handleLevelChange(); 
-
-        ['breakdowns', 'action_breakdowns', 'fields'].forEach(category => {
-            setupInteraction(category);
-            renderSelectedTagsAndHighlights(category); 
-        });
-
-        // Date Range visibility logic
-        const dateRangeRadios = document.querySelectorAll('input[name="{{ form.date_range_type.html_name }}"]');
-        const datePresetOptions = document.getElementById('datePresetOptions');
-        const customDateOptions = document.getElementById('customDateOptions');
-        function updateDateRangeVisibility() {
-            const selectedType = document.querySelector('input[name="{{ form.date_range_type.html_name }}"]:checked').value;
-            datePresetOptions.style.display = (selectedType === 'preset') ? 'block' : 'none';
-            customDateOptions.style.display = (selectedType === 'custom') ? 'block' : 'none';
-        }
-        dateRangeRadios.forEach(radio => radio.addEventListener('change', updateDateRangeVisibility));
-        updateDateRangeVisibility();
-    }
-    else if ("{{ data_source.name }}" === "GOOGLE_ADS") {
-            
-            // --- DOM 元素 ---
-            const treeContainer = document.getElementById('google_fields_tree_container');
-            const selectedDisplay = document.getElementById('google_selected_fields_display');
-            const hiddenSelect = document.querySelector('select[name="selected_fields"]');
-            const searchInput = document.getElementById('google_fields_search');
-            
-            const allFieldsTree = JSON.parse('{{ google_fields_json|escapejs|default:"{}" }}');
-            const selectedFields = new Set();
-
-            function buildTreeHtml(node, filterText) {
-                let html = '<ul>';
-                const lowerFilter = filterText.toLowerCase();
-
-                const sortedKeys = Object.keys(node).sort();
-
-                for (const key of sortedKeys) {
-                    const currentNode = node[key];
-                    if (key === '_is_leaf' || key === 'full_name' || key === 'display_name') continue;
-
-                    if (currentNode._is_leaf) {
-                        const fullName = currentNode.full_name;
-                        if (filterText === '' || fullName.toLowerCase().includes(lowerFilter)) {
-                            const isSelectedClass = selectedFields.has(fullName) ? 'is-selected' : '';
-                            html += `<li><span class="tree-node is-leaf ${isSelectedClass}" data-full-name="${fullName}">${key}</span></li>`;
-                        }
-                    } else {
-                        const childrenHtml = buildTreeHtml(currentNode, filterText);
-                        if (childrenHtml !== '<ul></ul>') {
-                            html += `<li>
-                                <span class="tree-node tree-branch">
-                                    <span class="tree-toggler">▼</span>${key}
-                                </span>
-                                ${childrenHtml}
-                            </li>`;
-                        }
-                    }
-                }
-                html += '</ul>';
-                return html;
-            }
-            
-            function renderTree() {
-                const filterText = searchInput.value;
-                const treeHtml = buildTreeHtml(allFieldsTree, filterText);
-                treeContainer.innerHTML = treeHtml ? `<div class="field-tree">${treeHtml}</div>` : '<div class="p-2 text-muted">No matching fields.</div>';
-
-                if (filterText !== '') {
-                    treeContainer.querySelectorAll('.tree-toggler').forEach(toggler => {
-                        const sublist = toggler.parentElement.nextElementSibling;
-                        if(sublist) sublist.style.display = 'block';
-                        toggler.classList.remove('collapsed');
-                    });
-                } else {
-                    treeContainer.querySelectorAll('.field-tree > ul > li > ul').forEach(ul => {
-                        ul.style.display = 'none';
-                        const toggler = ul.previousElementSibling.querySelector('.tree-toggler');
-                        if(toggler) toggler.classList.add('collapsed');
-                    });
-                }
-            }
-            
-            function updateSelectedDisplay() {
-                selectedDisplay.innerHTML = '';
-                if (selectedFields.size === 0) {
-                    selectedDisplay.innerHTML = '<span class="text-muted fs-small">No fields selected.</span>';
-                    return;
-                }
-                selectedFields.forEach(fullName => {
-                    const badge = document.createElement('span');
-                    badge.className = 'selected-item';
-                    badge.textContent = fullName;
-                    const removeBtn = document.createElement('button');
-                    removeBtn.type = 'button';
-                    removeBtn.className = 'selected-item-remove';
-                    removeBtn.innerHTML = '&times;';
-                    removeBtn.onclick = () => {
-                        selectedFields.delete(fullName);
-                        updateAllUI();
-                    };
-                    badge.appendChild(removeBtn);
-                    selectedDisplay.appendChild(badge);
-                });
-            }
-            
-            function syncWithHiddenForm() {
-                Array.from(hiddenSelect.options).forEach(opt => {
-                    opt.selected = selectedFields.has(opt.value);
-                });
-            }
-            
-            function updateAllUI() {
-                treeContainer.querySelectorAll('.tree-node.is-leaf').forEach(leaf => {
-                    leaf.classList.toggle('is-selected', selectedFields.has(leaf.dataset.fullName));
-                });
-                updateSelectedDisplay();
-                syncWithHiddenForm();
-            }
-
-            // --- 事件監聽 ---
-            treeContainer.addEventListener('click', function(e) {
-                const target = e.target;
-                const parentNodeSpan = target.closest('.tree-node');
-                if (!parentNodeSpan) return;
-
-                if (parentNodeSpan.classList.contains('tree-branch')) {
-                    const sublist = parentNodeSpan.nextElementSibling;
-                    const toggler = parentNodeSpan.querySelector('.tree-toggler');
-                    if (sublist && sublist.tagName === 'UL') {
-                        const isCollapsed = sublist.style.display === 'none';
-                        sublist.style.display = isCollapsed ? 'block' : 'none';
-                        toggler.classList.toggle('collapsed', !isCollapsed);
-                    }
-                } else if (parentNodeSpan.classList.contains('is-leaf')) {
-                    const fullName = parentNodeSpan.dataset.fullName;
-                    if (selectedFields.has(fullName)) {
-                        selectedFields.delete(fullName);
-                    } else {
-                        selectedFields.add(fullName);
-                    }
-                    updateAllUI();
-                }
-            });
-            
-            searchInput.addEventListener('input', renderTree);
-
-            // --- 初始載入 ---
-            if(hiddenSelect) {
-                Array.from(hiddenSelect.options).forEach(opt => {
-                    if (opt.selected) selectedFields.add(opt.value);
-                });
-            }
-            
-            renderTree();
-            updateSelectedDisplay();
-        }
-    });
-
-    // =================================================================
-    // 功能 3：處理 Google OAuth
-    // =================================================================
+    // 全域函式，保持不變
     function initiateGoogleOAuth(clientId) {
-        // 顯示載入狀態，防止重複點擊
         const authButton = document.querySelector('.oauth-authorize-btn');
         if (!authButton) return;
         const originalText = authButton.innerHTML;
         authButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Authorizing...';
         authButton.disabled = true;
-
-        // getCookie 來自 base.html，所以可以直接使用
         const csrftoken = getCookie('csrftoken');
-
-        // 呼叫後端，儲存當前頁面 URL
         fetch("{% url 'connections:save_oauth_redirect' %}", {
             method: 'POST',
             headers: {
@@ -701,19 +241,274 @@
             if (!response.ok) {
                throw new Error('Failed to save redirect URL. Server responded with ' + response.status);
             }
-            // 導向到我們的授權起點 URL
             const oauthUrl = `/connections/oauth/authorize/${clientId}/?data_source=GOOGLE_ADS`;
             window.location.href = oauthUrl;
         }).catch(error => {
             console.error('Error initiating OAuth:', error);
             alert('An error occurred while starting the authorization process. Please check the console for details.');
-            // 將按鈕恢復原狀
             authButton.innerHTML = originalText;
             authButton.disabled = false;
         });
-
-        return false; // 防止表單的預設提交行為
+        return false;
     }
 
+    // DOM 載入後執行的所有邏輯
+    document.addEventListener('DOMContentLoaded', function() {
+        // =================================================================
+        // 功能 0：前端驗證邏輯 (您的版本)
+        // =================================================================
+        const submitButton = document.getElementById('submitButton');
+        const form = document.getElementById('connectionForm');
+        const errorContainer = document.getElementById('form-validation-errors');
+        const errorList = document.getElementById('form-error-list');
+
+        if (submitButton) {
+            submitButton.addEventListener('click', function(event) {
+                event.preventDefault();
+                if (validateForm()) {
+                    form.submit();
+                }
+            });
+        }
+
+        function validateForm() {
+            errorList.innerHTML = '';
+            const errors = [];
+            const authStatusDiv = document.querySelector('#authStatus [data-status], #facebookAuthStatus [data-status]');
+            if (authStatusDiv && authStatusDiv.dataset.status === 'not-authorized') {
+                errors.push('Authorization Status cannot be "Not authorized". Please authorize the account.');
+            }
+            const connectionName = document.getElementById('{{ form.display_name.id_for_label }}');
+            if (connectionName && connectionName.value.trim() === '') {
+                errors.push('Connection Name cannot be blank.');
+            }
+            const targetDatasetId = document.getElementById('{{ form.target_dataset_id.id_for_label }}');
+            if (targetDatasetId && targetDatasetId.value.trim() === '') {
+                errors.push('Target Dataset ID cannot be blank.');
+            }
+            const syncFrequencyEl = document.getElementById('{{ form.sync_frequency.id_for_label }}');
+            const dayOfMonth = document.getElementById('{{ form.monthly_day_of_month.id_for_label }}');
+            if (syncFrequencyEl && syncFrequencyEl.value === 'monthly' && dayOfMonth && dayOfMonth.value.trim() === '') {
+                errors.push('Day of Month cannot be blank when Sync Frequency is set to Monthly.');
+            }
+            
+            const dataSourceName = "{{ data_source.name }}";
+
+            if (dataSourceName === 'GOOGLE_ADS') {
+                const customerIdField = document.getElementById('{{ form.customer_id.id_for_label }}');
+                if (customerIdField) {
+                    let cleanedId = customerIdField.value.replace(/-/g, '');
+                    customerIdField.value = cleanedId;
+                    if (cleanedId.trim() === '') {
+                        errors.push('Google Ads Customer ID cannot be blank.');
+                    } else if (!/^\d+$/.test(cleanedId)) {
+                        errors.push('Google Ads Customer ID must only contain numbers.');
+                    }
+                }
+                // 驗證 hidden input 是否存在
+                const hiddenInputs = document.querySelectorAll('#hidden-inputs-container input[type="hidden"]');
+                if (hiddenInputs.length === 0) {
+                     errors.push('You must select at least one Metric, Segment, or Attribute.');
+                }
+            } else if (dataSourceName === 'FACEBOOK_ADS') {
+                // Facebook validation logic here...
+            }
+
+            if (errors.length > 0) {
+                errors.forEach(function(error) {
+                    const li = document.createElement('li');
+                    li.textContent = error;
+                    errorList.appendChild(li);
+                });
+                errorContainer.style.display = 'block';
+                window.scrollTo(0, 0);
+                return false;
+            } else {
+                errorContainer.style.display = 'none';
+                return true;
+            }
+        }
+
+        // =================================================================
+        // 功能 1：處理 Sync Frequency 的顯示/隱藏 (您的版本)
+        // =================================================================
+        const syncFrequency = document.getElementById('{{ form.sync_frequency.id_for_label }}');
+        const weeklyOptions = document.getElementById('weekly-options');
+        const monthlyOptions = document.getElementById('monthly-options');
+
+        function updateSyncOptionsVisibility() {
+            if (!syncFrequency) return;
+            const value = syncFrequency.value;
+            if (weeklyOptions) weeklyOptions.style.display = value === 'weekly' ? 'block' : 'none';
+            if (monthlyOptions) monthlyOptions.style.display = value === 'monthly' ? 'block' : 'none';
+        }
+
+        if (syncFrequency) {
+            syncFrequency.addEventListener('change', updateSyncOptionsVisibility);
+            updateSyncOptionsVisibility();
+        }
+
+        // =================================================================
+        // 功能 2：Facebook & Google Ads 的欄位選擇 UI
+        // =================================================================
+        const dataSourceName = "{{ data_source.name }}";
+        
+        if (dataSourceName === "FACEBOOK_ADS") {
+            // ... (您現有的 Facebook 相關 JS 邏輯放在這裡) ...
+            
+        } else if (dataSourceName === "GOOGLE_ADS") {
+            // --- DOM 元素 ---
+            const resourceSelect = document.getElementById('{{ form.resource_name.id_for_label }}');
+            const fieldsContainer = document.getElementById('google-fields-selector-container');
+            const accordionContainer = document.getElementById('fields-accordion');
+            const selectedDisplay = document.getElementById('google-selected-fields-display');
+            const loadingSpinner = document.getElementById('fields-loading-spinner');
+            const hiddenInputsContainer = document.getElementById('hidden-inputs-container');
+
+            // --- 狀態管理 ---
+            let allAvailableFields = { metrics: [], segments: [], attributes: [] };
+            let selectedFields = new Set();
+
+            // --- 函式定義 ---
+            async function fetchCompatibleFields(resourceName) {
+                loadingSpinner.style.display = 'block';
+                accordionContainer.innerHTML = '';
+                try {
+                    const response = await fetch(`{% url 'connections:api_get_compatible_google_ads_fields' %}?resource=${resourceName}`);
+                    if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+                    allAvailableFields = await response.json();
+                    renderAvailableFields();
+                } catch (error) {
+                    console.error("Failed to fetch compatible fields:", error);
+                    accordionContainer.innerHTML = `<div class="alert alert-danger">Failed to load fields.</div>`;
+                } finally {
+                    loadingSpinner.style.display = 'none';
+                }
+            }
+
+            function renderAvailableFields() {
+                accordionContainer.innerHTML = '';
+                const categories = ['attributes', 'segments', 'metrics']; // 調整順序
+                categories.forEach(category => {
+                    const fields = allAvailableFields[category];
+                    if (fields.length > 0) {
+                        const categoryTitle = (category.charAt(0).toUpperCase() + category.slice(1));
+                        const categoryHtml = `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-${category}">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${category}">
+                                        ${categoryTitle} (${fields.length})
+                                    </button>
+                                </h2>
+                                <div id="collapse-${category}" class="accordion-collapse collapse" data-bs-parent="#fields-accordion">
+                                    <div class="list-group list-group-flush field-list-container">
+                                        ${fields.map(field => `
+                                            <a href="#" class="list-group-item list-group-item-action" data-field-name="${field.name}">
+                                                ${field.display}
+                                            </a>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        accordionContainer.innerHTML += categoryHtml;
+                    }
+                });
+            }
+
+            function renderSelectedDisplay() {
+                selectedDisplay.innerHTML = '';
+                if (selectedFields.size === 0) {
+                    selectedDisplay.innerHTML = '<span class="text-muted fs-small">No fields selected.</span>';
+                    return;
+                }
+                selectedFields.forEach(fullName => {
+                    const badge = document.createElement('span');
+                    badge.className = 'selected-item';
+                    const displayName = (fullName.split('.').length > 1 ? fullName.split('.').slice(1).join('.') : fullName).replace(/_/g, ' ');
+                    badge.textContent = displayName;
+                    const removeBtn = document.createElement('button');
+                    removeBtn.type = 'button';
+                    removeBtn.className = 'selected-item-remove';
+                    removeBtn.innerHTML = '&times;';
+                    removeBtn.onclick = () => { toggleFieldSelection(fullName); };
+                    badge.appendChild(removeBtn);
+                    selectedDisplay.appendChild(badge);
+                });
+            }
+
+            function syncWithHiddenInputs() {
+                hiddenInputsContainer.innerHTML = '';
+                selectedFields.forEach(fieldName => {
+                    let category = null;
+                    for (const cat of ['metrics', 'segments', 'attributes']) {
+                        if (allAvailableFields[cat].some(field => field.name === fieldName)) {
+                            category = cat;
+                            break;
+                        }
+                    }
+                    if (category) {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = `selected_${category}`;
+                        input.value = fieldName;
+                        hiddenInputsContainer.appendChild(input);
+                    }
+                });
+            }
+            
+            function updateAllUI() {
+                accordionContainer.querySelectorAll('.list-group-item').forEach(item => {
+                    item.classList.toggle('active', selectedFields.has(item.dataset.fieldName));
+                });
+                renderSelectedDisplay();
+                syncWithHiddenInputs();
+            }
+
+            function toggleFieldSelection(fieldName) {
+                if (selectedFields.has(fieldName)) {
+                    selectedFields.delete(fieldName);
+                } else {
+                    selectedFields.add(fieldName);
+                }
+                updateAllUI();
+            }
+
+            // --- 事件監聽 ---
+            resourceSelect.addEventListener('change', function() {
+                const resourceName = this.value;
+                selectedFields.clear();
+                allAvailableFields = { metrics: [], segments: [], attributes: [] };
+                updateAllUI();
+                if (resourceName) {
+                    fieldsContainer.style.display = 'block';
+                    fetchCompatibleFields(resourceName);
+                } else {
+                    fieldsContainer.style.display = 'none';
+                }
+            });
+
+            accordionContainer.addEventListener('click', function(e) {
+                e.preventDefault();
+                const target = e.target;
+                if (target.classList.contains('list-group-item')) {
+                    const fieldName = target.dataset.fieldName;
+                    toggleFieldSelection(fieldName);
+                }
+            });
+
+            // --- 初始載入 ---
+            if (resourceSelect.value) {
+                const initialFields = [
+                    ...Array.from(document.querySelectorAll('select[name=selected_metrics] option:checked')),
+                    ...Array.from(document.querySelectorAll('select[name=selected_segments] option:checked')),
+                    ...Array.from(document.querySelectorAll('select[name=selected_attributes] option:checked'))
+                ];
+                initialFields.forEach(opt => selectedFields.add(opt.value));
+                resourceSelect.dispatchEvent(new Event('change'));
+            }
+        }
+    });
 </script>
+
 {% endblock extra_js %}

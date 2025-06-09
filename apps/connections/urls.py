@@ -58,4 +58,5 @@ urlpatterns = [
         GoogleOAuth2CustomCallbackView.as_view(),
         name="google_callback",
     ),
+    path('api/get-compatible-google-ads-fields/', views.get_compatible_google_ads_fields_api, name='api_get_compatible_google_ads_fields'),
 ]

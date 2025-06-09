@@ -105,17 +105,31 @@ class GoogleAdsForm(BaseConnectionForm):
     customer_id = forms.CharField(label="Google Ads Customer ID", required=True)
 
     # Google Ads 報表格式
-    resource_name = forms.ChoiceField(
+    resource_name = forms.ModelChoiceField(
         label="Report Level (Resource)",
-        choices=[('campaign_view', 'Campaign Level'), ('ad_group_view', 'Ad Group Level')], # 提供一些預設值
+        queryset=GoogleAdsField.objects.filter(category='RESOURCE').order_by('field_name'),
+        to_field_name='field_name', # POST 的值會是 field_name
+        empty_label="--- Select a Resource ---",
         widget=forms.Select(attrs={'class': 'form-select'})
     )
 
-    selected_fields = forms.ModelMultipleChoiceField(
-        queryset=GoogleAdsField.objects.all().order_by('field_name'),
-        widget=forms.SelectMultiple(attrs={'class': 'd-none-but-used-by-js'}),
+    selected_metrics = forms.ModelMultipleChoiceField(
+        queryset=GoogleAdsField.objects.filter(category='METRIC'),
+        widget=forms.SelectMultiple(attrs={'class': 'd-none'}), # 隱藏起來，由 JS 控制
         required=False,
-        label="Selected Fields"
+        to_field_name='field_name'
+    )
+    selected_segments = forms.ModelMultipleChoiceField(
+        queryset=GoogleAdsField.objects.filter(category='SEGMENT'),
+        widget=forms.SelectMultiple(attrs={'class': 'd-none'}),
+        required=False,
+        to_field_name='field_name'
+    )
+    selected_attributes = forms.ModelMultipleChoiceField(
+        queryset=GoogleAdsField.objects.filter(category='ATTRIBUTE'),
+        widget=forms.SelectMultiple(attrs={'class': 'd-none'}),
+        required=False,
+        to_field_name='field_name'
     )
 
     class Meta(BaseConnectionForm.Meta):
@@ -123,7 +137,9 @@ class GoogleAdsForm(BaseConnectionForm):
         fields = BaseConnectionForm.Meta.fields + [
             'customer_id',
             'resource_name',
-            'selected_fields' # 使用新的合併欄位
+            'selected_metrics',
+            'selected_segments',
+            'selected_attributes'
         ]
 
     def __init__(self, *args, **kwargs):
@@ -136,20 +152,67 @@ class GoogleAdsForm(BaseConnectionForm):
             self.fields['customer_id'].initial = self.instance.config.get('customer_id')
             self.fields['resource_name'].initial = self.instance.config.get('resource_name')
             
-            selected_values = self.instance.config.get('selected_fields', [])
-            # 確保 selected_values 是 QuerySet 或主鍵列表
-            self.fields['selected_fields'].initial = GoogleAdsField.objects.filter(field_name__in=selected_values)
+            self.fields['selected_metrics'].initial = GoogleAdsField.objects.filter(field_name__in=self.instance.config.get('metrics', []))
+            self.fields['selected_segments'].initial = GoogleAdsField.objects.filter(field_name__in=self.instance.config.get('segments', []))
+            self.fields['selected_attributes'].initial = GoogleAdsField.objects.filter(field_name__in=self.instance.config.get('attributes', []))
+    
+    def clean(self):
+        """
+        伺服器端的核心驗證邏輯。
+        """
+        cleaned_data = super().clean()
+        resource = cleaned_data.get('resource_name')
+        metrics = cleaned_data.get('selected_metrics', [])
+        segments = cleaned_data.get('selected_segments', [])
+        attributes = cleaned_data.get('selected_attributes', [])
+
+        if not resource:
+            # 如果連 resource 都沒選，就不用繼續往下驗證了
+            return cleaned_data
+
+        if not metrics and not segments and not attributes:
+            raise forms.ValidationError("You must select at least one Metric, Segment, or Attribute.")
+
+        # 1. 獲取透過 ManyToMany 關聯的相容欄位 (Metrics 和 Segments)
+        compatible_fields_set = set(resource.compatible_fields.all())
+
+        # 2. 獲取 Resource 自身的屬性 (例如 ad_group.name, ad_group.campaign)
+        #    這些欄位以 resource 的名稱開頭
+        own_attributes_qs = GoogleAdsField.objects.filter(
+            category='ATTRIBUTE',
+            field_name__startswith=f"{resource.field_name}."
+        )
+        own_attributes_set = set(own_attributes_qs)
+
+        # 3. 將兩者合併，成為一個完整的合法欄位集合
+        valid_fields = compatible_fields_set.union(own_attributes_set)
+
+        # 驗證每個提交的欄位是否都在合法清單內
+        all_selected = list(metrics) + list(segments) + list(attributes)
+        for field in all_selected:
+            if field not in valid_fields:
+                raise forms.ValidationError(
+                    f"The field '{field.field_name}' is not compatible with the resource '{resource.field_name}'."
+                )
+
+        return cleaned_data
 
     def save(self, commit=True):
         # 先呼叫父類別的 save() 來處理通用欄位
         instance = super().save(commit=False)
 
         config = instance.config or {}
+
+        metrics_list = [field.field_name for field in self.cleaned_data.get('selected_metrics', [])]
+        segments_list = [field.field_name for field in self.cleaned_data.get('selected_segments', [])]
+        attributes_list = [field.field_name for field in self.cleaned_data.get('selected_attributes', [])]
+
         config.update({
             'customer_id': self.cleaned_data.get('customer_id'),
-            'resource_name': self.cleaned_data.get('resource_name'),
-            'metrics': self.cleaned_data.get('metrics', []),
-            'segments': self.cleaned_data.get('segments', []),
+            'resource_name': self.cleaned_data.get('resource_name').field_name, # 存 field_name
+            'metrics': metrics_list,
+            'segments': segments_list,
+            'attributes': attributes_list,
         })
         instance.config = config
         

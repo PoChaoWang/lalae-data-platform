@@ -14,43 +14,14 @@
         <div class="col-md-8">
             <div class="card">
                 <div class="card-body">
-                    <form method="post" class="needs-validation" novalidate>
+                    <form method="post" id="connectionForm" class="needs-validation" novalidate>
                         {% csrf_token %}
-                        
-                        {% if messages %}
-                        <div class="position-fixed top-0 end-0 p-3" style="z-index: 1050">
-                            {% for message in messages %}
-                                <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
-                                    <div class="toast-header {% if message.tags == 'error' %}bg-danger text-white{% elif message.tags == 'warning' %}bg-warning{% elif message.tags == 'success' %}bg-success text-white{% else %}bg-info text-white{% endif %}">
-                                        {% if message.tags == 'error' %}
-                                            <i class="bi bi-exclamation-triangle me-2"></i>
-                                        {% elif message.tags == 'warning' %}
-                                            <i class="bi bi-exclamation-circle me-2"></i>
-                                        {% elif message.tags == 'success' %}
-                                            <i class="bi bi-check-circle me-2"></i>
-                                        {% else %}
-                                            <i class="bi bi-info-circle me-2"></i>
-                                        {% endif %}
-                                        <strong class="me-auto">
-                                            {% if message.tags == 'error' %}
-                                                Error
-                                            {% elif message.tags == 'warning' %}
-                                                Warning
-                                            {% elif message.tags == 'success' %}
-                                                Success
-                                            {% else %}
-                                                Information
-                                            {% endif %}
-                                        </strong>
-                                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
-                                    </div>
-                                    <div class="toast-body">
-                                        {{ message }}
-                                    </div>
-                                </div>
-                            {% endfor %}
+
+                        <!-- ===== 新增：前端驗證錯誤訊息的顯示位置 ===== -->
+                        <div id="form-validation-errors" class="alert alert-danger" style="display: none;">
+                            <strong>Please correct the following errors:</strong>
+                            <ul id="form-error-list" class="mb-0 mt-2"></ul>
                         </div>
-                        {% endif %}
                         
                         {% if form.non_field_errors %}
                         <div class="alert alert-danger">
@@ -67,11 +38,11 @@
                                         <h5 class="card-title">Authorization Status</h5>
                                         <div id="authStatus" class="oauth-status mb-3">
                                             {% if oauth_status == 'authorized' %}
-                                                <div class="alert alert-success">
+                                                <div class="alert alert-success" data-status="authorized">
                                                     <i class="bi bi-check-circle"></i> Authorized as: {{ google_account_email }}
                                                 </div>
                                             {% else %}
-                                                <div class="alert alert-warning">
+                                                <div class="alert alert-warning" data-status="not-authorized">
                                                     <i class="bi bi-exclamation-triangle"></i> Not authorized
                                                 </div>
                                                 <div class="alert alert-info mt-3">
@@ -108,11 +79,11 @@
                                         <h5 class="card-title">Facebook Authorization Status</h5>
                                         <div id="facebookAuthStatus" class="oauth-status mb-3">
                                             {% if client.facebook_social_account %}
-                                                <div class="alert alert-success">
+                                                <div class="alert alert-success" data-status="authorized">
                                                     <i class="bi bi-check-circle"></i> Authorized as: {{ client.facebook_social_account.extra_data.name }}
                                                 </div>
                                             {% else %}
-                                                <div class="alert alert-warning">
+                                                <div class="alert alert-warning" data-status="not-authorized">
                                                     <i class="bi bi-exclamation-triangle"></i> Not authorized
                                                 </div>
                                                 <div class="alert alert-info mt-3">
@@ -230,7 +201,8 @@
                         </div>
             
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary" id="submitButton">
+                             <!-- ===== 修改：按鈕 type 改為 "button" ===== -->
+                            <button type="button" class="btn btn-primary" id="submitButton">
                                 Create Connection
                             </button>
                         </div>
@@ -243,10 +215,132 @@
 </div>
 {% endblock %}
 
+
 {% block extra_js %}
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+    // =================================================================
+    // 功能 0：前端驗證邏輯
+    // =================================================================
+    const submitButton = document.getElementById('submitButton');
+    const form = document.getElementById('connectionForm');
+    const errorContainer = document.getElementById('form-validation-errors');
+    const errorList = document.getElementById('form-error-list');
+    let googleSelectedFieldsSet = null;
+
+    submitButton.addEventListener('click', function(event) {
+        // 阻止預設行為
+        event.preventDefault();
+        
+        // 執行驗證
+        if (validateForm()) {
+            // 如果驗證通過，提交表單
+            form.submit();
+        }
+    });
+
+    function validateForm() {
+        // 清空舊的錯誤訊息
+        errorList.innerHTML = '';
+        const errors = [];
+        
+        // --- 通用驗證 (connection_form.html) ---
+        // 1. 授權狀態
+        const authStatusDiv = document.querySelector('#authStatus [data-status], #facebookAuthStatus [data-status]');
+        if (authStatusDiv && authStatusDiv.dataset.status === 'not-authorized') {
+            errors.push('Authorization Status cannot be "Not authorized". Please authorize the account.');
+        }
+
+        // 2. Connection Name
+        const connectionName = document.getElementById('{{ form.display_name.id_for_label }}');
+        if (connectionName && connectionName.value.trim() === '') {
+            errors.push('Connection Name cannot be blank.');
+        }
+
+        // 3. Target Dataset ID
+        const targetDatasetId = document.getElementById('{{ form.target_dataset_id.id_for_label }}');
+        if (targetDatasetId && targetDatasetId.value.trim() === '') {
+            errors.push('Target Dataset ID cannot be blank.');
+        }
+
+        // 4. Sync Frequency (Monthly)
+        const syncFrequency = document.getElementById('{{ form.sync_frequency.id_for_label }}');
+        const dayOfMonth = document.getElementById('{{ form.monthly_day_of_month.id_for_label }}');
+        if (syncFrequency && syncFrequency.value === 'monthly' && dayOfMonth && dayOfMonth.value.trim() === '') {
+            errors.push('Day of Month cannot be blank when Sync Frequency is set to Monthly.');
+        }
+        
+        const dataSourceName = "{{ data_source.name }}";
+
+        // --- Google Ads 專屬驗證 ---
+        if (dataSourceName === 'GOOGLE_ADS') {
+            // 1. Google Ads Customer ID
+            const customerId = document.getElementById('{{ form.customer_id.id_for_label }}');
+            if (customerId && customerId.value.trim() === '') {
+                errors.push('Google Ads Customer ID cannot be blank.');
+            } else if (customerId && customerId.value.includes('-')) {
+                errors.push('Google Ads Customer ID cannot contain hyphens (-).');
+            }
+
+            // 2. Selected Fields
+            if (googleSelectedFieldsSet && googleSelectedFieldsSet.size === 0) {
+                 errors.push('Selected Fields for Google Ads cannot be empty.');
+            }
+             // 3. Date Range (假設與 Facebook 結構相同)
+            const googleDateRangeType = document.querySelector('input[name="date_range_type"]:checked');
+            if (googleDateRangeType && googleDateRangeType.value === 'custom') {
+                const startDate = document.getElementById('{{ form.date_since.id_for_label }}');
+                const endDate = document.getElementById('{{ form.date_until.id_for_label }}');
+                if (startDate && startDate.value.trim() === '') {
+                    errors.push('Start Date cannot be blank for a Custom Date Range.');
+                }
+                if (endDate && endDate.value.trim() === '') {
+                    errors.push('End Date cannot be blank for a Custom Date Range.');
+                }
+            }
+        }
+
+        // --- Facebook Ads 專屬驗證 ---
+        if (dataSourceName === 'FACEBOOK_ADS') {
+            // 1. Fields
+            const fbSelectedFields = document.getElementById('id_selected_fields');
+            if (fbSelectedFields && fbSelectedFields.selectedOptions.length === 0) {
+                errors.push('Fields for Facebook Ads cannot be empty.');
+            }
+            const fbSelecteAccountId = document.getElementById('id_facebook_ad_account_id');
+            if (fbSelecteAccountId && fbSelecteAccountId.value.trim() === '') {
+                errors.push('Facebook Ads Account ID cannot be blank.');
+            }
+            // 2. Date Range Selection
+            const fbDateRangeType = document.querySelector('input[name="{{ form.date_range_type.html_name }}"]:checked');
+            if (fbDateRangeType && fbDateRangeType.value === 'custom') {
+                const startDate = document.getElementById('{{ form.date_since.id_for_label }}');
+                const endDate = document.getElementById('{{ form.date_until.id_for_label }}');
+                if (startDate && startDate.value.trim() === '') {
+                    errors.push('Start Date cannot be blank for a Custom Date Range.');
+                }
+                if (endDate && endDate.value.trim() === '') {
+                    errors.push('End Date cannot be blank for a Custom Date Range.');
+                }
+            }
+        }
+
+        // --- 顯示錯誤或回傳成功 ---
+        if (errors.length > 0) {
+            errors.forEach(function(error) {
+                const li = document.createElement('li');
+                li.textContent = error;
+                errorList.appendChild(li);
+            });
+            errorContainer.style.display = 'block';
+            window.scrollTo(0, 0); // 將頁面滾動到頂部以顯示錯誤
+            return false;
+        } else {
+            errorContainer.style.display = 'none';
+            return true;
+        }
+    }
 
     // =================================================================
     // 功能 1：處理 Sync Frequency 的顯示/隱藏

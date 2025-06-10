@@ -19,7 +19,7 @@ class DataSource(models.Model):
     name = models.CharField(max_length=50, choices=SOURCE_CHOICES, unique=True)
     display_name = models.CharField(max_length=255, default='Default Name')
     oauth_required = models.BooleanField(default=True)  
-    required_scopes = models.JSONField(default=list) 
+    required_scopes = models.JSONField(default=list, blank=True) 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -162,8 +162,6 @@ class ConnectionExecution(models.Model):
 
     def __str__(self):
         return f" {self.display_name_snapshot} execution @ {self.started_at.strftime('%Y-%m-%d %H:%M')}"
-
-
 
 class GoogleAdsField(models.Model):
     CATEGORY_CHOICES = [

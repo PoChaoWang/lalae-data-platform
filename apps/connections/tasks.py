@@ -15,6 +15,7 @@ from allauth.socialaccount.models import SocialToken
 from .models import Connection, ConnectionExecution
 from .apis.facebook_ads import FacebookAdsAPIClient
 from .apis.google_oauth import GoogleAdsAPIClient
+from .apis.google_sheet import GoogleSheetAPIClient
 from allauth.socialaccount.models import SocialToken
 
 
@@ -24,9 +25,10 @@ logger = logging.getLogger(__name__)
 def get_api_client(connection):
     source_name = connection.data_source.name
     if source_name == "FACEBOOK_ADS":
-        if not connection.social_account:
-            raise Exception("Connection is not linked to a social account.")
-        token_obj = SocialToken.objects.get(account=connection.social_account)
+        if not connection.client or not connection.client.facebook_social_account:
+            raise Exception(f"Connection {connection.id} is not linked to a Client, or its Client is not linked to a Facebook social account.")
+        # token_obj = SocialToken.objects.get(account=connection.social_account)
+        token_obj = SocialToken.objects.get(account=connection.client.facebook_social_account)
         return FacebookAdsAPIClient(
             app_id=settings.FACEBOOK_APP_ID,
             app_secret=settings.FACEBOOK_APP_SECRET,
@@ -35,6 +37,9 @@ def get_api_client(connection):
         )
     elif source_name == "GOOGLE_ADS":
         return GoogleAdsAPIClient(connection=connection) 
+    elif source_name == "GOOGLE_SHEET":
+        # ✨ 新增 Google Sheet 的 client
+        return GoogleSheetAPIClient()
     else:
         raise NotImplementedError(f"API Client for data source '{source_name}' is not implemented.")
 
@@ -53,6 +58,9 @@ def sync_connection_data_task(self, connection_id, triggered_by_user_id=None):
     if not connection.is_enabled:
         logger.warning(f"Sync task for connection {connection_id} was triggered, but the connection is disabled. Skipping.")
         return
+
+    logger.info(f"--- [DEBUG] Task running for Connection ID {connection_id}. Its data_source.name is: '{connection.data_source.name}' ---")
+
 
     # --- 步驟 1: 建立執行紀錄 (Execution Record) ---
     trigger_method = 'MANUAL' if triggered_by_user_id else 'SYSTEM'
@@ -86,6 +94,20 @@ def sync_connection_data_task(self, connection_id, triggered_by_user_id=None):
             )
             logger.info(f"FacebookAdsAPIClient returned {len(data_to_load)} rows.")
 
+            # --- START: 新增的 BigQuery 寫入邏輯 ---
+            if data_to_load:
+                loaded_row_count = api_client.write_insights_to_bigquery(
+                    dataset_id=connection.target_dataset_id,
+                    table_name=connection.display_name, # 使用 connection name 作為 table name
+                    insights_data=data_to_load
+                )
+                execution.message = f"Successfully fetched {len(data_to_load)} rows from Facebook and loaded {loaded_row_count} rows into BigQuery."
+                execution.record_count = loaded_row_count
+            else:
+                execution.message = "Successfully connected to Facebook, but no data was returned for the selected period."
+                execution.record_count = 0
+            # --- END: 新增的 BigQuery 寫入邏輯 ---
+
         elif isinstance(api_client, GoogleAdsAPIClient):
             success, message = api_client.run_query_and_save()
             if not success:
@@ -93,6 +115,29 @@ def sync_connection_data_task(self, connection_id, triggered_by_user_id=None):
             # Google Client 內部處理了資料寫入，這裡直接更新紀錄
             execution.message = message
             logger.info("GoogleAdsAPIClient executed successfully.")
+        
+        elif isinstance(api_client, GoogleSheetAPIClient):
+            # ✨ 處理 Google Sheet 的同步
+            logger.info(f"Starting Google Sheet sync for connection {connection.id}")
+            config = connection.config
+            
+            # 1. 建立或更新 BigQuery 資料表
+            api_client.create_or_update_bigquery_table(
+                dataset_id=connection.target_dataset_id,
+                table_name=connection.display_name,
+                schema_config=config.get('schema')
+            )
+            
+            # 2. 從 Sheet 載入資料
+            record_count = api_client.load_data_from_sheet(
+                sheet_id=config.get('sheet_id'),
+                tab_name=config.get('tab_name'),
+                dataset_id=connection.target_dataset_id,
+                table_name=connection.display_name
+            )
+
+            execution.message = f"Successfully fetched and loaded {record_count} rows from Google Sheet."
+            execution.record_count = record_count
         
         # === 載入資料到 BigQuery (若有) ===
         if data_to_load:

@@ -8,7 +8,7 @@ from .apis.facebook_ads import get_facebook_field_choices
 from django.contrib import messages
 import logging
 import pytz
-
+import json
 
 timezone = pytz.timezone('Asia/Taipei')
 
@@ -77,6 +77,7 @@ class BaseConnectionForm(forms.ModelForm):
         self.user = kwargs.pop('user', None)
         self.request = kwargs.pop('request', None)
         self.data_source = kwargs.pop('data_source_instance', None)
+        self.client = kwargs.pop('client', None)
 
         super().__init__(*args, **kwargs)
 
@@ -198,35 +199,42 @@ class GoogleAdsForm(BaseConnectionForm):
         return cleaned_data
 
     def save(self, commit=True):
-        # 先呼叫父類別的 save() 來處理通用欄位
+        # 1. 呼叫父類別的 save()。它會處理通用欄位，並建立一個包含
+        #    'sync_frequency', 'sync_hour' 等的基礎 config 字典。
+        #    它回傳的 instance 已經有了 instance.config。
         instance = super().save(commit=False)
 
-        config = instance.config or {}
+        # 2. 將 client 賦值給 instance。self.client 來自我們上一步修正的 __init__。
+        instance.client = self.client
+        if not instance.client:
+            raise forms.ValidationError("Client is missing. Cannot save connection.")
 
+        # 3. 執行依賴於 client 的驗證。
+        if not instance.client.is_oauth_authorized():
+            raise forms.ValidationError(
+                "This client needs Google OAuth authorization. Please authorize first."
+            )
+
+        # 4. 準備 Google Ads 專用的設定值。
         metrics_list = [field.field_name for field in self.cleaned_data.get('selected_metrics', [])]
         segments_list = [field.field_name for field in self.cleaned_data.get('selected_segments', [])]
         attributes_list = [field.field_name for field in self.cleaned_data.get('selected_attributes', [])]
-
-        config.update({
+        
+        # 5. ✨ 在父類別已建立的 config 基礎上，更新 (update) Google Ads 的專屬設定。
+        #    這修復了 UnboundLocalError。
+        instance.config.update({
             'customer_id': self.cleaned_data.get('customer_id'),
-            'resource_name': self.cleaned_data.get('resource_name').field_name, # 存 field_name
+            'resource_name': self.cleaned_data.get('resource_name').field_name,
             'metrics': metrics_list,
             'segments': segments_list,
             'attributes': attributes_list,
         })
-        instance.config = config
         
-        client = instance.client
-        if not client.is_oauth_authorized():
-             # 在表單層級引發一個驗證錯誤，而不是在 view 中重導向
-            raise forms.ValidationError(
-                "This client needs Google OAuth authorization. Please authorize first."
-            )
-        
-        instance.social_account = client.google_social_account
+        # 6. 設定其他 Connection 相關的欄位。
+        instance.social_account = instance.client.google_social_account
         instance.status = "PENDING"
 
-        # 因為 setup_dts_transfer 需要一個已儲存的物件 (帶有 pk)，所以我們先儲存一次
+        # 7. 如果 commit=True，則將 instance 儲存到資料庫。
         if commit:
             instance.save()
         
@@ -340,6 +348,77 @@ class FacebookAdsForm(BaseConnectionForm):
             'date_until': str(self.cleaned_data.get('date_until')) if self.cleaned_data.get('date_until') else None,
         })
         
+        if commit:
+            instance.save()
+        return instance
+
+class GoogleSheetForm(BaseConnectionForm):
+    sheet_id = forms.CharField(
+        label="Google Sheet ID",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., 1a2b3c...'})
+    )
+    tab_name = forms.CharField(
+        label="Tab Name",
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'e.g., Sheet1'})
+    )
+    # 這個欄位將由 JavaScript 填充，對使用者隱藏
+    columns_config = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'd-none'}),
+        required=True
+    )
+    
+    # 在 __init__ 中，將 data_source_instance 從 view 傳入
+    def __init__(self, *args, **kwargs):
+        self.data_source_instance = kwargs.pop('data_source_instance', None)
+        self.user = kwargs.pop('user', None)
+        self.request = kwargs.pop('request', None)
+        super().__init__(*args, **kwargs)
+
+    def clean_columns_config(self):
+        config_str = self.cleaned_data.get('columns_config')
+        if not config_str:
+            raise forms.ValidationError("Schema configuration is missing.")
+        try:
+            config = json.loads(config_str)
+
+            sanitized_columns = []
+            for col in config.get('columns', []):
+                original_name = col.get('name')
+                if original_name:
+                    # 將欄位名中的空格替換為底線
+                    col['name'] = original_name.strip().replace(' ', '_')
+                sanitized_columns.append(col)
+            config['columns'] = sanitized_columns
+
+            # 同時也要處理指定的日期欄位
+            original_date_column = config.get('date_column')
+            if original_date_column:
+                config['date_column'] = original_date_column.strip().replace(' ', '_')
+
+            if not isinstance(config, dict):
+                raise forms.ValidationError("Invalid configuration format.")
+            if 'columns' not in config or not config['columns']:
+                raise forms.ValidationError("At least one column must be defined.")
+            if 'date_column' not in config or not config['date_column']:
+                raise forms.ValidationError("A date field must be selected.")
+            return config # 回傳解析後的 Python dict
+        except json.JSONDecodeError:
+            raise forms.ValidationError("Invalid JSON in schema configuration.")
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        
+        # 將特定於 Google Sheet 的設定儲存到 config JSON 欄位中
+        instance.config = {
+            'sheet_id': self.cleaned_data.get('sheet_id'),
+            'tab_name': self.cleaned_data.get('tab_name'),
+            'schema': self.cleaned_data.get('columns_config'),
+        }
+        
+        # 關聯 data_source
+        if self.data_source_instance:
+            instance.data_source = self.data_source_instance
+
         if commit:
             instance.save()
         return instance

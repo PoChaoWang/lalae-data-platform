@@ -12,6 +12,10 @@ import os
 import json
 from django.urls import reverse
 
+from google.cloud import bigquery
+from google.api_core.exceptions import GoogleAPICallError, NotFound
+
+
 logger = logging.getLogger(__name__)
 
 class FacebookAdsAPIClient:
@@ -41,6 +45,13 @@ class FacebookAdsAPIClient:
             self.ad_account_id = ad_account_id
 
         self._api = None # To store the initialized API instance
+
+        try:
+            self.bq_client = bigquery.Client()
+            logger.info("Google BigQuery client initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize Google BigQuery client: {e}")
+            raise
 
         try:
             self._api = FacebookAdsApi.init( # Store the API instance
@@ -195,6 +206,118 @@ class FacebookAdsAPIClient:
 
         return [] # 如果所有重試都失敗，返回空列表
 
+    def _infer_bigquery_schema(self, data_row: dict) -> list:
+        """
+        根據單行 Facebook Insight 資料推斷 BigQuery 的 Schema。
+        """
+        schema = []
+        # 定義一些常見欄位的型態，其餘預設為 STRING
+        type_mapping = {
+            # 整數型態
+            'impressions': 'INTEGER',
+            'clicks': 'INTEGER',
+            'reach': 'INTEGER',
+            'video_p25_watched_actions': 'INTEGER',
+            'video_p50_watched_actions': 'INTEGER',
+            'video_p75_watched_actions': 'INTEGER',
+            'video_p100_watched_actions': 'INTEGER',
+            'video_plays': 'INTEGER',
+            # 浮點數/數字型態
+            'spend': 'FLOAT',
+            'cpc': 'FLOAT',
+            'cpm': 'FLOAT',
+            'ctr': 'FLOAT',
+            'cpp': 'FLOAT',
+            'cost_per_thruplay': 'FLOAT',
+            # 日期型態
+            'date_start': 'DATE',
+            'date_stop': 'DATE',
+        }
+        
+        for key, value in data_row.items():
+            field_type = type_mapping.get(key, 'STRING')
+            schema.append(bigquery.SchemaField(key, field_type))
+            
+        logger.info(f"Inferred schema with {len(schema)} fields.")
+        return schema
+    
+    def write_insights_to_bigquery(self, dataset_id: str, table_name: str, insights_data: list) -> int:
+        """
+        將 Facebook Insights 資料寫入指定的 BigQuery 資料表。
+        這個方法會處理：
+        1. 檢查資料是否存在。
+        2. 將 Facebook SDK object 轉換為 dict。
+        3. 推斷 Schema。
+        4. 建立或取得資料表。
+        5. 載入資料。
+        """
+        if not insights_data:
+            logger.info("No insights data to write to BigQuery.")
+            return 0
+
+        # 將 Facebook AdsInsights 物件列表轉換為字典列表
+        # Facebook SDK 回傳的物件可以用 dict() 直接轉換
+        records_to_load = [dict(row) for row in insights_data]
+        
+        # 取得 BigQuery 資料集和資料表的參照
+        dataset_ref = self.bq_client.dataset(dataset_id)
+        table_ref = dataset_ref.table(table_name)
+        
+        try:
+            # 檢查資料表是否存在，如果不存在，下一步會引發 NotFound 錯誤
+            self.bq_client.get_table(table_ref)
+            logger.info(f"Table {dataset_id}.{table_name} already exists. Appending data.")
+        except NotFound:
+            # 資料表不存在，根據第一筆資料的結構來建立它
+            logger.info(f"Table {dataset_id}.{table_name} not found. Creating new table.")
+            # 從第一筆資料推斷 schema
+            schema = self._infer_bigquery_schema(records_to_load[0])
+            table = bigquery.Table(table_ref, schema=schema)
+            
+            # 將 date_start 設為每日分區欄位，這是 FB 廣告數據最常用的分區方式
+            if 'date_start' in [field.name for field in schema]:
+                table.time_partitioning = bigquery.TimePartitioning(
+                    type_=bigquery.TimePartitioningType.DAY,
+                    field="date_start"
+                )
+                logger.info("Setting time partitioning on 'date_start' field.")
+            
+            try:
+                self.bq_client.create_table(table)
+                logger.info(f"Successfully created table {dataset_id}.{table_name}")
+            except GoogleAPICallError as e:
+                logger.error(f"Failed to create BigQuery table: {e}", exc_info=True)
+                raise
+
+        # --- 載入資料 ---
+        job_config = bigquery.LoadJobConfig(
+            # 如果目標資料表已有資料，APPEND 會將新資料附加在後面
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        )
+
+        try:
+            load_job = self.bq_client.load_table_from_json(
+                records_to_load,
+                table_ref,
+                job_config=job_config
+            )
+            logger.info(f"Starting BigQuery load job {load_job.job_id} for table {table_name}")
+
+            load_job.result()  # 等待工作完成
+
+            if load_job.errors:
+                logger.error(f"BigQuery load job finished with errors for table {table_name}: {load_job.errors}")
+                # 拋出異常，讓 Celery task 捕捉到錯誤
+                raise Exception(f"BigQuery load errors: {load_job.errors}")
+            else:
+                logger.info(f"Successfully loaded {load_job.output_rows} rows into {dataset_id}.{table_name}.")
+                return load_job.output_rows
+
+        except Exception as e:
+            logger.error(f"An error occurred during BigQuery data load: {e}", exc_info=True)
+            raise
+
+    
 def get_facebook_ads_page_context(user_access_token=None): # Added user_access_token
     """
     準備用於 Facebook Ads 相關頁面的上下文數據。

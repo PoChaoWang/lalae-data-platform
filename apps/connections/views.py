@@ -36,7 +36,7 @@ import json
 # App-specific imports
 from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution
 from django.db.models import Q
-from .forms import BaseConnectionForm, GoogleAdsForm, FacebookAdsForm
+from .forms import BaseConnectionForm, GoogleAdsForm, FacebookAdsForm, GoogleSheetForm
 from apps.clients.models import Client  # Assuming this path is correct
 
 # Import refactored OAuth and DTS logic from apis/google_oauth.py
@@ -54,6 +54,8 @@ from .apis.facebook_ads import (
     get_facebook_oauth_url,
     
 )
+
+from .apis.google_sheet import GoogleSheetAPIClient
 
 from .tasks import sync_connection_data_task
 from itertools import chain
@@ -126,7 +128,7 @@ class SelectDataSourceView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["data_sources"] = DataSource.objects.filter(
-            name__in=["GOOGLE_ADS", "FACEBOOK_ADS"]
+            name__in=["GOOGLE_ADS", "FACEBOOK_ADS", "GOOGLE_SHEET"]
         )
         client_id = self.request.GET.get("client_id")
         dataset_id = self.request.GET.get("dataset_id")
@@ -206,6 +208,8 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
             return GoogleAdsForm
         elif source_name == 'FACEBOOK_ADS':
             return FacebookAdsForm
+        elif source_name == 'GOOGLE_SHEET': 
+            return GoogleSheetForm
         else:
             return BaseConnectionForm
 
@@ -219,11 +223,13 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
         data_source = get_object_or_404(DataSource, name=source_name)
         kwargs['data_source_instance'] = data_source
 
+        client_id = self.kwargs.get("client_id")
+        client = get_object_or_404(Client, id=client_id)
+        kwargs['client'] = client
+
         # 如果是 Facebook，我們需要準備 ad_accounts 的選項並傳給 form
         if source_name == 'FACEBOOK_ADS':
             print("start to get form")
-            client_id = self.kwargs.get("client_id")
-            client = get_object_or_404(Client, id=client_id)
             ad_accounts = []
             
             # 從 SocialAccount 中安全地獲取 token
@@ -298,6 +304,7 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
         return context
 
     def form_invalid(self, form):
+        
         print("================== FORM IS INVALID ==================")
         print(form.errors.as_json()) 
         print("===================================================")
@@ -309,89 +316,112 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
         這個方法只會在表單通過所有基礎驗證後 (form.is_valid() == True) 才被呼叫。
         """
         logger.info(f"form_valid() called for source: {self.kwargs.get('source_name')}")
-
-       
-        client = get_object_or_404(Client, id=self.kwargs.get("client_id"))
-        form.instance.client = client
-        form.instance.status = "PENDING"
-        
-        try:
-            self.object = form.save()
-        except Exception as e:
-            logger.error(f"An unexpected error occurred during form.save(): {e}", exc_info=True)
-            form.add_error(None, f"An unexpected error occurred while saving the connection: {e}")
-            return self.form_invalid(form)
         source_name = self.kwargs.get("source_name")
+        client = get_object_or_404(Client, id=self.kwargs.get("client_id"))
+        
+        self.object = form.save(commit=False)
+        self.object.client = client
+        self.object.status = "PENDING"
+        self.object.user = self.request.user
 
+        try: 
+            if source_name == "GOOGLE_SHEET":
+                try:
+                    sheet_id = form.cleaned_data.get('sheet_id')
+                    logger.info(f"Performing Google Sheet pre-flight checks for sheet ID: {sheet_id}")
+                    
+                    # 初始化 API Client
+                    api_client = GoogleSheetAPIClient()
+                    
+                    # 步驟 9: 驗證權限
+                    if not api_client.check_sheet_permissions(sheet_id):
+                        logger.warning(f"Permission validation failed for sheet ID: {sheet_id}")
+                        # 將錯誤新增到表單並返回
+                        form.add_error('sheet_id', "Permission Denied. Please ensure our service account has 'Editor' access to this Google Sheet.")
+                        return self.form_invalid(form)
+                    
+                    logger.info("Google Sheet permission check PASSED.")
+
+                except Exception as e:
+                    logger.error(f"An unexpected error occurred during Google Sheet validation: {e}", exc_info=True)
+                    form.add_error(None, f"An unexpected error occurred: {e}")
+                    return self.form_invalid(form)
     
-        if source_name == "FACEBOOK_ADS":
-            if not client.facebook_social_account:
-                form.add_error(None, "This client does not have a linked Facebook account. Please authorize it first.")
-                return self.form_invalid(form)
+            elif source_name == "FACEBOOK_ADS":
+                if not client.facebook_social_account:
+                    form.add_error(None, "This client does not have a linked Facebook account. Please authorize it first.")
+                    return self.form_invalid(form)
 
-            try:
-                logger.info("Performing Facebook API connection test...")
-                token_obj = SocialToken.objects.get(account=client.facebook_social_account, app__provider='facebook')
-                fb_client = FacebookAdsAPIClient(
-                    app_id=settings.FACEBOOK_APP_ID,
-                    app_secret=settings.FACEBOOK_APP_SECRET,
-                    access_token=token_obj.token,
-                    ad_account_id=form.cleaned_data.get('facebook_ad_account_id')
-                )
-                # 執行一個輕量的 API 請求作為測試，例如獲取廣告帳戶的名稱
-                fb_client.get_insights(fields=['campaign_name'], date_preset='yesterday')
-                logger.info("Facebook API connection test PASSED.")
-            except Exception as e:
-                logger.error(f"Facebook API connection test FAILED: {e}", exc_info=True)
-                # 將詳細的技術錯誤記錄下來，但只給使用者一個友善的提示
-                form.add_error(None, f"Connection test to Facebook failed. Please check your account permissions or try re-authorizing. Error: {e}")
-                return self.form_invalid(form)
+                try:
+                    logger.info("Performing Facebook API connection test...")
+                    token_obj = SocialToken.objects.get(account=client.facebook_social_account, app__provider='facebook')
+                    fb_client = FacebookAdsAPIClient(
+                        app_id=settings.FACEBOOK_APP_ID,
+                        app_secret=settings.FACEBOOK_APP_SECRET,
+                        access_token=token_obj.token,
+                        ad_account_id=form.cleaned_data.get('facebook_ad_account_id')
+                    )
+                    # 執行一個輕量的 API 請求作為測試，例如獲取廣告帳戶的名稱
+                    fb_client.get_insights(fields=['campaign_name'], date_preset='yesterday')
+                    logger.info("Facebook API connection test PASSED.")
+                except Exception as e:
+                    logger.error(f"Facebook API connection test FAILED: {e}", exc_info=True)
+                    # 將詳細的技術錯誤記錄下來，但只給使用者一個友善的提示
+                    form.add_error(None, f"Connection test to Facebook failed. Please check your account permissions or try re-authorizing. Error: {e}")
+                    return self.form_invalid(form)
 
-        elif source_name == "GOOGLE_ADS":
-            if not client.is_oauth_authorized():
-                form.add_error(None, "Google account is not authorized for this client.")
-                return self.form_invalid(form)
-            try:
-                logger.info("Performing Google Ads API connection test...")
-                social_token = SocialToken.objects.get(account=client.google_social_account)
-                
-                # 確保 token 是最新的，以防測試因 token 過期而失敗
-                _refresh_user_social_token(social_token)
-                
-                # 建立一個臨時的 Google Ads Client 來進行測試
-                google_ads_config = {
-                    "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                    "client_id": social_token.app.client_id,
-                    "client_secret": social_token.app.secret,
-                    "refresh_token": social_token.token_secret,
-                    # 使用表單中使用者剛填寫的 customer_id
-                    "login_customer_id": form.cleaned_data.get("customer_id"), 
-                    "use_proto_plus": True
-                }
-                google_ads_client = GoogleAdsClient.load_from_dict(google_ads_config)
-                customer_service = google_ads_client.get_service("CustomerService")
-                
-                # 執行一個輕量的 API 請求，例如列出可存取的客戶，來驗證憑證是否有效
-                accessible_customers = customer_service.list_accessible_customers()
-                logger.info("Google Ads API connection test PASSED.")
+            elif source_name == "GOOGLE_ADS":
+                if not client.is_oauth_authorized():
+                    form.add_error(None, "Google account is not authorized for this client.")
+                    return self.form_invalid(form)
+                try:
+                    logger.info("Performing Google Ads API connection test...")
+                    social_token = SocialToken.objects.get(account=client.google_social_account)
+                    
+                    # 確保 token 是最新的，以防測試因 token 過期而失敗
+                    _refresh_user_social_token(social_token)
+                    
+                    # 建立一個臨時的 Google Ads Client 來進行測試
+                    google_ads_config = {
+                        "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
+                        "client_id": social_token.app.client_id,
+                        "client_secret": social_token.app.secret,
+                        "refresh_token": social_token.token_secret,
+                        # 使用表單中使用者剛填寫的 customer_id
+                        "login_customer_id": form.cleaned_data.get("customer_id"), 
+                        "use_proto_plus": True
+                    }
+                    google_ads_client = GoogleAdsClient.load_from_dict(google_ads_config)
+                    customer_service = google_ads_client.get_service("CustomerService")
+                    
+                    # 執行一個輕量的 API 請求，例如列出可存取的客戶，來驗證憑證是否有效
+                    accessible_customers = customer_service.list_accessible_customers()
+                    logger.info("Google Ads API connection test PASSED.")
 
-            except Exception as e:
-                logger.error(f"Google Ads API connection test FAILED: {e}", exc_info=True)
-                form.add_error(None, f"Connection test to Google Ads failed. Please check credentials and permissions. Error: {e}")
-                return self.form_invalid(form)
-
-
-
-        try:
-            self.object = form.save()
-            logger.info(f"Connection object {self.object.pk} created successfully in the database.")
-            messages.success(self.request, f"Connection '{self.object.display_name}' was created successfully.")
+                except Exception as e:
+                    logger.error(f"Google Ads API connection test FAILED: {e}", exc_info=True)
+                    form.add_error(None, f"Connection test to Google Ads failed. Please check credentials and permissions. Error: {e}")
+                    return self.form_invalid(form)
         except Exception as e:
-            # 防禦性程式碼，以防在 form.save() 內部發生未預期的錯誤
-            logger.error(f"An unexpected error occurred during form.save(): {e}", exc_info=True)
-            form.add_error(None, f"An unexpected error occurred while saving the connection: {e}")
+            # 任何 API 驗證的失敗都會在這裡被捕捉
+            logger.error(f"API connection test FAILED for {source_name}: {e}", exc_info=True)
+            form.add_error(None, f"Connection test failed: {e}")
+            # 因為尚未儲存，所以這裡返回時資料庫是乾淨的
             return self.form_invalid(form)
 
+        try:
+            self.object.save()
+            # form.save_m2m() # 如果您的表單有關聯多對多欄位，也需要呼叫此方法
+            logger.info(f"Connection object {self.object.pk} with all checks passed is now saved to the database.")
+        except Exception as e:
+            # 這是一個防禦性措施，以防在最後儲存階段發生資料庫層級的錯誤
+            logger.error(f"An unexpected error occurred during the final database save(): {e}", exc_info=True)
+            form.add_error(None, f"An unexpected error occurred while saving the connection: {e}")
+            return self.form_invalid(form)
+            
+        # --- 步驟 4: 派發非同步任務並重導向 ---
+        messages.success(self.request, f"Connection '{self.object.display_name}' was created successfully. First data sync is in progress.")
+        
         sync_connection_data_task.delay(
             self.object.pk,
             triggered_by_user_id=self.request.user.id  

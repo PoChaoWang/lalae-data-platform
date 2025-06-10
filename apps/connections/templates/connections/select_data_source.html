@@ -22,10 +22,17 @@
                         <p class="card-text">
                             Connect to Google Ads API to access campaign data and metrics.
                         </p>
+
                     {% elif source.name == 'FACEBOOK_ADS' %}
                         <h5 class="card-title">Facebook Ads</h5>
                         <p class="card-text">
                             Connect to Facebook Ads API to access campaign data and metrics.
+                        </p>
+
+                    {% elif source.name == 'GOOGLE_SHEET' %}
+                        <h5 class="card-title">Google Sheet</h5>
+                        <p class="card-text">
+                            Import data from Google Sheet you shared.
                         </p>
                     {% endif %}
                     

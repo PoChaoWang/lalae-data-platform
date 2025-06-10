@@ -234,12 +234,12 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 
-CELERY_BEAT_SCHEDULE = {
-    'schedule-periodic-syncs': {
-        'task': 'apps.connections.tasks.schedule_periodic_syncs_task',
-        'schedule': crontab(minute='*'),  # 每分鐘執行一次
-    },
-}
+# CELERY_BEAT_SCHEDULE = {
+#     'schedule-periodic-syncs': {
+#         'task': 'apps.connections.tasks.schedule_periodic_syncs_task',
+#         'schedule': crontab(minute='*'),  # 每分鐘執行一次
+#     },
+# }
 
 
 SITE_ID = 1

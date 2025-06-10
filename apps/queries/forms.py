@@ -1,3 +1,5 @@
+# apps/queries/forms.py
+
 from django import forms
 from .models import QueryDefinition
 from django.utils import timezone

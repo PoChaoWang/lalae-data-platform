@@ -17,20 +17,18 @@
         <div class="col">
             <div class="card h-100">
                 <div class="card-body">
-                    <h5 class="card-title">
-                        {% if source.name == 'FACEBOOK_ADS' %}
-                            Facebook Ads
-                        {% else %}
-                            {{ source.get_name_display }}
-                        {% endif %}
-                    </h5>
-                    <p class="card-text">
-                        {% if source.name == 'GOOGLE_ADS' %}
+                    {% if source.name == 'GOOGLE_ADS' %}
+                        <h5 class="card-title">Google Ads</h5>
+                        <p class="card-text">
                             Connect to Google Ads API to access campaign data and metrics.
-                        {% elif source.name == 'FACEBOOK_ADS' %}
+                        </p>
+                    {% elif source.name == 'FACEBOOK_ADS' %}
+                        <h5 class="card-title">Facebook Ads</h5>
+                        <p class="card-text">
                             Connect to Facebook Ads API to access campaign data and metrics.
-                        {% endif %}
-                    </p>
+                        </p>
+                    {% endif %}
+                    
                 </div>
                 <div class="card-footer bg-transparent border-top-0">
                     <a href="{% url 'connections:connection_create' client_id=client_id source_name=source.name %}?dataset_id={{ dataset_id }}" class="btn btn-primary w-100">

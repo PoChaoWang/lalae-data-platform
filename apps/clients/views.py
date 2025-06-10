@@ -12,6 +12,17 @@ class ClientListView(LoginRequiredMixin, ListView):
     context_object_name = 'clients'
     ordering = ['-created_at']
 
+    def get_queryset(self):
+        """
+        覆寫這個方法，確保使用者只能看到他們有權限的客戶。
+        (自己擁有的，或別人分享的)
+        """
+        if self.request.user.is_superuser:
+            # 超級使用者可以看到所有客戶
+            return Client.objects.all().order_by('-created_at')
+        # 一般使用者只能看到他們有權限的客戶
+        return Client.objects.filter(settings__user=self.request.user).distinct().order_by('-created_at')
+
 class ClientCreateView(LoginRequiredMixin, CreateView):
     model = Client
     form_class = ClientForm
@@ -68,6 +79,17 @@ class ClientUpdateView(LoginRequiredMixin, UpdateView):
         client.save(request=self.request)
         messages.success(self.request, f'Client "{client.name}" was successfully updated.')
         return redirect(self.success_url)
+    
+    def get_queryset(self):
+        """
+        覆寫這個方法，確保使用者只能編輯他們擁有編輯權限的客戶。
+        """
+        if self.request.user.is_superuser:
+            # 超級使用者可以編輯所有客戶
+            return Client.objects.all()
+        
+        # 一般使用者只能編輯他們有 can_edit=True 權限的客戶
+        return Client.objects.filter(settings__user=self.request.user, settings__can_edit=True)
 
 class ClientDeleteView(LoginRequiredMixin, DeleteView):
     model = Client
@@ -78,3 +100,14 @@ class ClientDeleteView(LoginRequiredMixin, DeleteView):
         client = self.get_object()
         messages.info(request, f'Client "{client.name}" was successfully deleted. BigQuery dataset deletion has been initiated.')
         return super().delete(request, *args, **kwargs)
+    
+    def get_queryset(self):
+        """
+        覆寫這個方法，確保只有擁有者才能刪除客戶。
+        """
+        if self.request.user.is_superuser:
+            # 超級使用者可以刪除所有客戶
+            return Client.objects.all()
+        
+        # 一般使用者只能刪除他們是擁有者 (is_owner=True) 的客戶
+        return Client.objects.filter(settings__user=self.request.user, settings__is_owner=True)

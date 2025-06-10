@@ -67,7 +67,15 @@ class ConnectionListView(LoginRequiredMixin, ListView):
     context_object_name = "connections"
 
     def get_queryset(self):
-        return Connection.objects.select_related('client', 'data_source', 'social_account').filter(user=self.request.user).order_by("-created_at")
+        # 如果是超級使用者，回傳所有連線
+        if self.request.user.is_superuser:
+            return Connection.objects.select_related('client', 'data_source').all().order_by("-created_at")
+
+        # 找出使用者有權限的所有客戶 (自己建立的或被分享的)
+        accessible_clients = Client.objects.filter(settings__user=self.request.user)
+        
+        # 篩選出所有與這些客戶相關的連線
+        return Connection.objects.select_related('client', 'data_source').filter(client__in=accessible_clients).order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -83,7 +91,12 @@ class SelectClientView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["clients"] = Client.objects.all()
+        # 如果是超級使用者，顯示所有客戶
+        if self.request.user.is_superuser:
+            context["clients"] = Client.objects.all().order_by('name')
+        else:
+            # 一般使用者只顯示他們有權限的客戶
+            context["clients"] = Client.objects.filter(settings__user=self.request.user).distinct().order_by('name')
         return context
 
 
@@ -250,6 +263,19 @@ class ConnectionCreateView(LoginRequiredMixin, CreateView):
         context['client'] = client
         context["dataset_id"] = self.request.GET.get("dataset_id") or self.request.session.get("selected_dataset_id")
         
+        if self.request.user.is_superuser:
+            # 超級使用者可以直接獲取客戶，無需檢查權限
+            client = get_object_or_404(Client, id=client_id)
+        else:
+            # 一般使用者必須對該客戶有權限
+            try:
+                # 嘗試從使用者有權限的客戶中獲取目標客戶
+                client = Client.objects.filter(settings__user=self.request.user).get(id=client_id)
+            except Client.DoesNotExist:
+                # 如果找不到，表示使用者無權為此客戶建立連線，拋出 404 錯誤
+                from django.http import Http404
+                raise Http404("You do not have permission to create a connection for this client.")
+            
         try:
             if source_name == "FACEBOOK_ADS":
                 # ... (您現有的 Facebook 邏輯保持不變) ...
@@ -387,9 +413,14 @@ class ConnectionDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "connection"
 
     def get_queryset(self):
-        return Connection.objects.select_related(
-            'user', 'data_source', 'client', 'social_account'
-        ).filter(user=self.request.user)
+        # 如果是超級使用者，可以看任何連線
+        if self.request.user.is_superuser:
+            return Connection.objects.select_related('user', 'data_source', 'client').all()
+
+        # 找出使用者有權限的所有客戶
+        accessible_clients = Client.objects.filter(settings__user=self.request.user)
+        # 篩選出與這些客戶相關的連線
+        return Connection.objects.select_related('user', 'data_source', 'client').filter(client__in=accessible_clients)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -456,6 +487,10 @@ class ConnectionUpdateView(LoginRequiredMixin, UpdateView):
     # 因此我們移除 template_name 和 form_class 相關的所有方法
 
     def get_queryset(self):
+        # 如果是超級使用者，可以更新任何連線
+        if self.request.user.is_superuser:
+            return Connection.objects.all()
+        # 一般使用者只能更新自己建立的連線
         return Connection.objects.filter(user=self.request.user)
 
     def post(self, request, *args, **kwargs):
@@ -517,6 +552,10 @@ class ConnectionDeleteView(LoginRequiredMixin, DeleteView):
     success_url = reverse_lazy("connections:connection_list")
 
     def get_queryset(self):
+        # 如果是超級使用者，可以刪除任何連線
+        if self.request.user.is_superuser:
+            return Connection.objects.all()
+        # 一般使用者只能刪除自己建立的連線
         return Connection.objects.filter(user=self.request.user)
 
     def delete(self, request, *args, **kwargs):

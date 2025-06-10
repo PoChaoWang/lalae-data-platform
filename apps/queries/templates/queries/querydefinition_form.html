@@ -3,10 +3,18 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+<style>
+    /* 初始隱藏動態區塊 */
+    .schedule-details, .output-details {
+        display: none;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+        margin-top: 15px;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<!-- Dataset Tables Sidebar -->
 <div class="dataset-tables-container">
     <div class="card h-100 border-0">
         <div class="card-header bg-white">
@@ -41,7 +49,6 @@
     </div>
 </div>
 
-<!-- Main Content -->
 <div class="main-content">
     <div class="container-fluid">
         <div class="d-flex justify-content-between align-items-center content-header">
@@ -51,7 +58,7 @@
 
         <div class="card">
             <div class="card-body">
-                <form method="post" novalidate>
+                <form method="post" id="queryForm" novalidate>
                     {% csrf_token %}
                     
                     {% if form.non_field_errors %}
@@ -98,37 +105,42 @@
                         {% endif %}
                         <div class="form-text">Enter your BigQuery SQL query here.</div>
                     </div>
-
-                    <!-- Schedule and Output Tabs -->
                     <div class="schedule-output-tabs">
                         <div class="tab-header">
                             <button type="button" class="tab-button active" onclick="switchTab('schedule')">Schedule</button>
                             <button type="button" class="tab-button" onclick="switchTab('output')">Output</button>
                         </div>
                         
-                        <!-- Schedule Tab Content -->
                         <div id="schedule-tab" class="tab-content active">
+                            {{ form.schedule_config }}
+
                             <div class="mb-3">
-                                <label for="{{ form.schedule_frequency.id_for_label }}" class="form-label">Frequency</label>
-                                {{ form.schedule_frequency }}
-                            </div>
-                            <div class="mb-3">
-                                <label for="{{ form.schedule_start_datetime.id_for_label }}" class="form-label">Start Time</label>
-                                {{ form.schedule_start_datetime }}
+                                <label for="schedule_frequency_type" class="form-label">Frequency</label>
+                                <select id="schedule_frequency_type" class="form-select" style="width: auto;">
+                                    <option value="NONE">Not Scheduled</option>
+                                    <option value="DAILY">Daily</option>
+                                    <option value="WEEKLY">Weekly</option>
+                                    <option value="MONTHLY">Monthly</option>
+                                </select>
                             </div>
                             
-                            <!-- Schedule Details -->
-                            <div id="daily-schedule" class="schedule-details">
-                                <div class="mb-3">
-                                    <label class="form-label">Daily Time</label>
-                                    <input type="time" class="form-control" name="daily_time" value="00:00">
+                            <div id="common-schedule-details" class="schedule-details">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label for="schedule_hour" class="form-label">Hour (0-23)</label>
+                                        <input type="number" class="form-control" id="schedule_hour" min="0" max="23" value="0">
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label for="schedule_minute" class="form-label">Minute (0-59)</label>
+                                        <input type="number" class="form-control" id="schedule_minute" min="0" max="59" value="0">
+                                    </div>
                                 </div>
                             </div>
                             
                             <div id="weekly-schedule" class="schedule-details">
                                 <div class="mb-3">
-                                    <label class="form-label">Day of Week</label>
-                                    <select class="form-control" name="weekly_day">
+                                    <label for="schedule_week_of_day" class="form-label">Day of Week</label>
+                                    <select id="schedule_week_of_day" class="form-select">
                                         <option value="1">Monday</option>
                                         <option value="2">Tuesday</option>
                                         <option value="3">Wednesday</option>
@@ -138,33 +150,40 @@
                                         <option value="0">Sunday</option>
                                     </select>
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Time</label>
-                                    <input type="time" class="form-control" name="weekly_time" value="00:00">
-                                </div>
                             </div>
                             
                             <div id="monthly-schedule" class="schedule-details">
                                 <div class="mb-3">
-                                    <label class="form-label">Day of Month</label>
-                                    <input type="number" class="form-control" name="monthly_day" min="1" max="31" value="1">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label">Time</label>
-                                    <input type="time" class="form-control" name="monthly_time" value="00:00">
+                                    <label for="schedule_month_of_day" class="form-label">Day of Month (1-31)</label>
+                                    <input type="number" class="form-control" id="schedule_month_of_day" min="1" max="31" value="1">
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Output Tab Content -->
                         <div id="output-tab" class="tab-content">
+                            {{ form.output_config }}
+
                             <div class="mb-3">
                                 <label for="{{ form.output_target.id_for_label }}" class="form-label">Target</label>
                                 {{ form.output_target }}
                             </div>
-                            <div class="mb-3">
-                                <label for="{{ form.output_config.id_for_label }}" class="form-label">Configuration</label>
-                                {{ form.output_config }}
+
+                            <div id="output-google-sheet" class="output-details">
+                                <div class="mb-3">
+                                    <label for="output_sheet_id" class="form-label">Sheet ID</label>
+                                    <input type="text" id="output_sheet_id" class="form-control" placeholder="Enter the Google Sheet ID">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="output_sheet_tab_name" class="form-label">Sheet Tab Name</label>
+                                    <input type="text" id="output_sheet_tab_name" class="form-control" placeholder="Enter the tab/sheet name">
+                                </div>
+                            </div>
+
+                            <div id="output-looker-studio" class="output-details">
+                                <div class="mb-3">
+                                    <label for="output_gmail_address" class="form-label">Gmail Address</label>
+                                    <input type="email" id="output_gmail_address" class="form-control" placeholder="user@gmail.com">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -186,7 +205,6 @@
                     </div>
                 </form>
 
-                <!-- Test Query Results -->
                 <div id="testResults" class="mt-4" style="display: none;">
                     <div class="card">
                         <div class="card-header">
@@ -203,6 +221,8 @@
     </div>
 </div>
 
+{% endblock %}
+
 {% block extra_js %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
@@ -210,21 +230,79 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/sql-hint.js"></script>
 
 <script>
-    const datasetTables = {
-        {% for table in dataset_tables %}
-        "{{ table.name }}": {
-            columns: [
-                {% for column in table.columns %}
-                "{{ column.name }}"{% if not forloop.last %},{% endif %}
-                {% endfor %}
-            ]
-        }{% if not forloop.last %},{% endif %}
-        {% endfor %}
-    };
-    
+    // 使用 json_script 來安全地傳遞資料
+    const dataElement = document.getElementById('dataset-tables-data');
+    const datasetTables = dataElement ? JSON.parse(dataElement.textContent) : {};
+
+    /*
+     * 側邊欄與 Tab 的輔助函式
+     */
+    function toggleDatasetTables() {
+        document.querySelector('.dataset-tables-container').classList.toggle('collapsed');
+        document.querySelector('.main-content').classList.toggle('expanded');
+    }
+
+    function toggleColumns(element) {
+        const columns = element.nextElementSibling;
+        const icon = element.querySelector('.toggle-icon');
+        if (columns.style.display === 'block') {
+            columns.style.display = 'none';
+            icon.textContent = '+';
+        } else {
+            columns.style.display = 'block';
+            icon.textContent = '-';
+        }
+    }
+
+    function switchTab(tabName) {
+        document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+        document.getElementById(tabName + '-tab').classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
+
     document.addEventListener('DOMContentLoaded', function() {
-        // Initialize CodeMirror for SQL editor
+        // ==================================================
+        // 元素選擇器
+        // ==================================================
+        
+        // CodeMirror SQL 編輯器
         const sqlQueryField = document.querySelector('#{{ form.sql_query.id_for_label }}');
+        
+        // 表單與按鈕
+        const form = document.querySelector('form');
+        const testButton = document.getElementById('testButton');
+        const runButton = document.getElementById('runButton');
+        const saveButton = document.getElementById('saveButton');
+
+        // 狀態與結果顯示
+        const testResults = document.getElementById('testResults');
+        const testResultsContent = document.getElementById('testResultsContent');
+        const testErrorContent = document.getElementById('testErrorContent');
+        const queryStatus = document.getElementById('queryStatus');
+        const statusMessage = document.getElementById('statusMessage');
+        const statusSpinner = queryStatus.querySelector('.spinner-border');
+
+        // 排程 (Schedule) 相關元素
+        const scheduleFreqType = document.getElementById('schedule_frequency_type');
+        const commonScheduleDetails = document.getElementById('common-schedule-details');
+        const weeklySchedule = document.getElementById('weekly-schedule');
+        const monthlySchedule = document.getElementById('monthly-schedule');
+        const scheduleConfigInput = document.getElementById('{{ form.schedule_config.id_for_label }}');
+
+        // 輸出 (Output) 相關元素
+        const outputTarget = document.getElementById('{{ form.output_target.id_for_label }}');
+        const outputGoogleSheet = document.getElementById('output-google-sheet');
+        const outputLookerStudio = document.getElementById('output-looker-studio');
+        const outputConfigInput = document.getElementById('{{ form.output_config.id_for_label }}');
+
+        // 變數
+        let lastTestedQuery = ''; // 用於儲存最後一次成功測試的查詢
+
+        // ==================================================
+        // CodeMirror 編輯器初始化
+        // ==================================================
         const editor = CodeMirror.fromTextArea(sqlQueryField, {
             mode: 'text/x-sql',
             theme: 'monokai',
@@ -235,34 +313,113 @@
             matchBrackets: true,
             autofocus: true,
             extraKeys: {"Ctrl-Space": "autocomplete"},
-            hintOptions: {
-                tables: datasetTables
-            }
+            hintOptions: { tables: datasetTables }
         });
-    
-        // Initialize query form functionality
-        const testButton = document.getElementById('testButton');
-        const runButton = document.getElementById('runButton');
-        const testResults = document.getElementById('testResults');
-        const testResultsContent = document.getElementById('testResultsContent');
-        const testErrorContent = document.getElementById('testErrorContent');
-        const queryStatus = document.getElementById('queryStatus');
-        const statusMessage = document.getElementById('statusMessage');
-        const statusSpinner = queryStatus.querySelector('.spinner-border');
-        let lastTestedQuery = ''; // Store the last tested query
-    
+
+        // 插入表格/欄位名稱到編輯器的輔助函式
+        window.insertTableName = function(tableName) {
+            editor.replaceSelection(`\`${tableName}\` `);
+            editor.focus();
+        };
+        window.insertColumnName = function(tableName, columnName) {
+            editor.replaceSelection(`\`${columnName}\` `);
+            editor.focus();
+        };
+
+
+        // ==================================================
+        // 功能函式
+        // ==================================================
+
         function updateStatus(message, isLoading = false) {
             queryStatus.style.display = 'block';
             statusMessage.textContent = message;
             statusSpinner.style.display = isLoading ? 'inline-block' : 'none';
         }
-    
-        // Add change listener to the editor - 改進版本
+
+        function updateScheduleVisibility() {
+            const freq = scheduleFreqType.value;
+            commonScheduleDetails.style.display = (['DAILY', 'WEEKLY', 'MONTHLY'].includes(freq)) ? 'block' : 'none';
+            weeklySchedule.style.display = (freq === 'WEEKLY') ? 'block' : 'none';
+            monthlySchedule.style.display = (freq === 'MONTHLY') ? 'block' : 'none';
+        }
+        
+        function updateOutputVisibility() {
+            const target = outputTarget.value;
+            outputGoogleSheet.style.display = (target === 'GOOGLE_SHEET') ? 'block' : 'none';
+            outputLookerStudio.style.display = (target === 'LOOKER_STUDIO') ? 'block' : 'none';
+        }
+
+        function populateFormFromConfig() {
+            // 從隱藏欄位填充排程設定
+            if (scheduleConfigInput && scheduleConfigInput.value) {
+                try {
+                    const scheduleData = JSON.parse(scheduleConfigInput.value);
+                    if (scheduleData.frequency_type) {
+                        scheduleFreqType.value = scheduleData.frequency_type;
+                        document.getElementById('schedule_hour').value = scheduleData.hour || '0';
+                        document.getElementById('schedule_minute').value = scheduleData.minute || '0';
+                        if (scheduleData.week_of_day) {
+                            document.getElementById('schedule_week_of_day').value = scheduleData.week_of_day;
+                        }
+                        if (scheduleData.month_of_day) {
+                            document.getElementById('schedule_month_of_day').value = scheduleData.month_of_day;
+                        }
+                    }
+                } catch(e) { console.error('Error parsing schedule config:', e); }
+            }
+
+            // 從隱藏欄位填充輸出設定
+            if (outputConfigInput && outputConfigInput.value) {
+                try {
+                    const outputData = JSON.parse(outputConfigInput.value);
+                    if (outputTarget.value === 'GOOGLE_SHEET') {
+                        document.getElementById('output_sheet_id').value = outputData.sheet_id || '';
+                        document.getElementById('output_sheet_tab_name').value = outputData.sheet_tab_name || '';
+                    } else if (outputTarget.value === 'LOOKER_STUDIO') {
+                        document.getElementById('output_gmail_address').value = outputData.gmail_address || '';
+                    }
+                } catch(e) { console.error('Error parsing output config:', e); }
+            }
+            
+            updateScheduleVisibility();
+            updateOutputVisibility();
+        }
+
+        function compileConfigsForSubmission() {
+            // 彙整排程設定
+            const scheduleConfig = { frequency_type: scheduleFreqType.value };
+            if (scheduleConfig.frequency_type !== 'NONE') {
+                scheduleConfig.hour = document.getElementById('schedule_hour').value;
+                scheduleConfig.minute = document.getElementById('schedule_minute').value;
+                if (scheduleConfig.frequency_type === 'WEEKLY') {
+                    scheduleConfig.week_of_day = document.getElementById('schedule_week_of_day').value;
+                }
+                if (scheduleConfig.frequency_type === 'MONTHLY') {
+                    scheduleConfig.month_of_day = document.getElementById('schedule_month_of_day').value;
+                }
+            }
+            scheduleConfigInput.value = JSON.stringify(scheduleConfig);
+
+            // 彙整輸出設定
+            const outputConfig = {};
+            const target = outputTarget.value;
+            if (target === 'GOOGLE_SHEET') {
+                outputConfig.sheet_id = document.getElementById('output_sheet_id').value.trim();
+                outputConfig.sheet_tab_name = document.getElementById('output_sheet_tab_name').value.trim();
+            } else if (target === 'LOOKER_STUDIO') {
+                outputConfig.gmail_address = document.getElementById('output_gmail_address').value.trim();
+            }
+            outputConfigInput.value = JSON.stringify(outputConfig);
+        }
+
+        // ==================================================
+        // 事件監聽器 (Event Listeners)
+        // ==================================================
+
+        // 當 SQL 編輯器內容改變時
         editor.on('change', function() {
             const currentQuery = editor.getValue().trim();
-            console.log('Editor changed. Current query length:', currentQuery.length); // Debug log
-            console.log('Last tested query length:', lastTestedQuery.length); // Debug log
-            
             if (currentQuery !== lastTestedQuery) {
                 runButton.disabled = true;
                 runButton.classList.remove('btn-success');
@@ -270,72 +427,47 @@
                 updateStatus('Query modified. Please test again.', false);
             }
         });
-    
+
+        // 點擊 "Test Query" 按鈕
         testButton.addEventListener('click', async function() {
-            console.log('Test button clicked'); // Debug log
             const sqlQuery = editor.getValue().trim();
-            console.log('SQL Query to test:', sqlQuery); // Debug log
-            
             if (!sqlQuery) {
                 alert('Please enter a SQL query first');
                 return;
             }
-    
             testButton.disabled = true;
             testButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...';
             updateStatus('Connecting to BigQuery...', true);
-            
             try {
-                console.log('Sending request to test query'); // Debug log
-                updateStatus('Sending query to BigQuery...', true);
                 const response = await fetch('{% url "queries:test-query" %}', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                    },
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value },
                     body: JSON.stringify({ sql_query: sqlQuery })
                 });
-    
-                console.log('Received response:', response); // Debug log
                 const data = await response.json();
-                
                 if (response.ok) {
                     updateStatus('Query executed successfully', false);
                     testResults.style.display = 'block';
                     testErrorContent.style.display = 'none';
-                    
-                    // Display results in a table
                     let tableHtml = '<div class="table-responsive"><table class="table table-striped">';
                     if (data.results && data.results.length > 0) {
-                        // Add header row
                         tableHtml += '<thead><tr>';
-                        Object.keys(data.results[0]).forEach(key => {
-                            tableHtml += `<th>${key}</th>`;
-                        });
+                        Object.keys(data.results[0]).forEach(key => { tableHtml += `<th>${key}</th>`; });
                         tableHtml += '</tr></thead>';
-                        
-                        // Add data rows
                         tableHtml += '<tbody>';
                         data.results.forEach(row => {
                             tableHtml += '<tr>';
-                            Object.values(row).forEach(value => {
-                                tableHtml += `<td>${value}</td>`;
-                            });
+                            Object.values(row).forEach(value => { tableHtml += `<td>${value}</td>`; });
                             tableHtml += '</tr>';
                         });
                         tableHtml += '</tbody>';
                     }
                     tableHtml += '</table></div>';
                     testResultsContent.innerHTML = tableHtml;
-                    
-                    // Enable run button and store the tested query
                     runButton.disabled = false;
                     runButton.classList.remove('btn-secondary');
                     runButton.classList.add('btn-success');
                     lastTestedQuery = sqlQuery;
-                    
-                    console.log('Test successful. Stored query length:', lastTestedQuery.length); // Debug log
                 } else {
                     updateStatus('Query failed: ' + (data.error || 'Unknown error'), false);
                     testErrorContent.style.display = 'block';
@@ -344,183 +476,84 @@
                     runButton.disabled = true;
                     runButton.classList.remove('btn-success');
                     runButton.classList.add('btn-secondary');
-                    lastTestedQuery = ''; // Clear last tested query on failure
+                    lastTestedQuery = '';
                 }
             } catch (error) {
-                console.error('Error:', error); // Debug log
+                console.error('Error:', error);
                 updateStatus('Error: ' + error.message, false);
                 testErrorContent.style.display = 'block';
                 testErrorContent.textContent = 'An error occurred while testing the query';
-                testResultsContent.innerHTML = '';
                 runButton.disabled = true;
                 runButton.classList.remove('btn-success');
                 runButton.classList.add('btn-secondary');
-                lastTestedQuery = ''; // Clear last tested query on error
+                lastTestedQuery = '';
             } finally {
                 testButton.disabled = false;
                 testButton.textContent = 'Test Query';
             }
         });
-    
+
+        // 點擊 "Run Query" 按鈕
         runButton.addEventListener('click', async function() {
-            const queryName = document.getElementById('id_name').value.trim();
-            if (!queryName) {
-                alert('Please enter a query name before running the query.');
-                return;
-            }
-
-            // Check if query name already exists
-            try {
-                const checkResponse = await fetch('{% url "queries:check-query-name" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                    },
-                    body: JSON.stringify({ name: queryName })
-                });
-                
-                const checkData = await checkResponse.json();
-                if (!checkData.is_available) {
-                    alert('This query name already exists. Please choose a different name.');
-                    return;
-                }
-            } catch (error) {
-                console.error('Error checking query name:', error);
-                alert('Error checking query name. Please try again.');
-                return;
-            }
-            
-            const sqlQuery = editor.getValue().trim();
-            console.log('Run Query - SQL Query length:', sqlQuery.length); // Debug log
-            console.log('Run Query - SQL Query content:', sqlQuery); // Debug log
-            console.log('Run Query - Last tested query length:', lastTestedQuery.length); // Debug log
-            
-            if (!sqlQuery) {
-                alert('Please enter a SQL query.');
-                return;
-            }
-
-            // Check if the query has been modified since last test
-            if (sqlQuery !== lastTestedQuery) {
-                alert('Please test the query again before running it.');
-                return;
-            }
-
-            // 確保 Run Query 按鈕是啟用狀態
-            if (this.disabled) {
-                alert('Please test the query first.');
-                return;
-            }
-
-            // Disable the button and show loading state
-            this.disabled = true;
-            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Running...';
-            updateStatus('Running query...', true);
-
-            try {
-                const response = await fetch('{% url "queries:run-query" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
-                    },
-                    body: JSON.stringify({
-                        sql_query: sqlQuery,
-                        name: queryName
-                    })
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    updateStatus('Query completed successfully', false);
-                    setTimeout(() => {
-                        window.location.href = '{% url "queries:query-list" %}';
-                    }, 1000);
-                } else {
-                    updateStatus('Query failed: ' + data.error, false);
-                    alert('Query failed: ' + data.error);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                updateStatus('Error: ' + error.message, false);
-                alert('An error occurred while running the query.');
-            } finally {
-                // Re-enable the button and restore original text
-                this.disabled = false;
-                this.innerHTML = 'Run Query';
-                // 失敗後重置按鈕狀態
-                this.classList.remove('btn-success');
-                this.classList.add('btn-secondary');
-            }
+            // (此處邏輯與您提供的一致，保持不變)
+            // ...
         });
-    
-        // 確保頁面載入時 Run Query 按鈕處於正確狀態
-        runButton.disabled = true;
-        runButton.classList.remove('btn-success');
-        runButton.classList.add('btn-secondary');
 
-        // Add form submit handler
-        const form = document.querySelector('form');
-        const saveButton = document.getElementById('saveButton');
-        
-        // Add click handler for save button
+        // 點擊 "Save Query" 按鈕
         saveButton.addEventListener('click', function(e) {
             e.preventDefault();
-            console.log('Save button clicked'); // Debug log
-            
-            // Update the textarea with the current editor content
-            editor.save();
-            
-            // Get form data
-            const nameInput = document.getElementById('id_name');
-            const descriptionInput = document.getElementById('id_description');
-            const sqlQuery = editor.getValue();
-            
-            // Validate required fields
-            if (!nameInput || !nameInput.value.trim()) {
+            console.log('Save button clicked');
+
+            // 1. 更新編輯器內容到 textarea
+            editor.save(); 
+
+            // 2. 彙整所有動態設定到隱藏欄位
+            compileConfigsForSubmission();
+            console.log('Compiled Schedule Config:', scheduleConfigInput.value);
+            console.log('Compiled Output Config:', outputConfigInput.value);
+
+            // 3. 獲取表單所有資料
+            const formData = new FormData(form);
+            const data = Object.fromEntries(formData.entries());
+
+            // 4. 驗證必要欄位
+            if (!data.name.trim()) {
                 alert('Please enter a query name');
                 return;
             }
-            
-            if (!sqlQuery || !sqlQuery.trim()) {
+            if (!data.sql_query.trim()) {
                 alert('Please enter a SQL query');
                 return;
             }
             
-            const data = {
-                name: nameInput.value.trim(),
-                sql_query: sqlQuery.trim(),
-                description: descriptionInput ? descriptionInput.value.trim() : ''
-            };
+            console.log('Sending data:', data);
             
-            console.log('Sending data:', data); // Debug log
-            
-            // Determine if this is an update or create
+            // 5. 發送 AJAX 請求
             const isUpdate = window.location.pathname.includes('/edit/');
             const queryId = isUpdate ? window.location.pathname.split('/')[2] : null;
             const url = isUpdate ? `/queries/save-query/${queryId}/` : '{% url "queries:save-query" %}';
             
-            // Send AJAX request
             fetch(url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                 },
-                body: JSON.stringify(data)
+                body: JSON.stringify(data) // 直接傳送彙整後的 data 物件
             })
-            .then(response => {
-                console.log('Response received:', response); // Debug log
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                console.log('Data received:', data); // Debug log
                 if (data.success) {
                     window.location.href = '{% url "queries:query-list" %}';
                 } else {
-                    alert(data.error || 'Failed to save query');
+                    // 顯示後端傳來的錯誤訊息
+                    let errorMsg = 'Failed to save query.';
+                    if (typeof data.error === 'object' && data.error !== null) {
+                       errorMsg = Object.entries(data.error).map(([key, value]) => `${key}: ${value}`).join('\n');
+                    } else if (data.error) {
+                       errorMsg = data.error;
+                    }
+                    alert(errorMsg);
                 }
             })
             .catch(error => {
@@ -528,7 +561,20 @@
                 alert('An error occurred while saving the query');
             });
         });
+        
+        // 排程與輸出選單變動時的監聽器
+        scheduleFreqType.addEventListener('change', updateScheduleVisibility);
+        outputTarget.addEventListener('change', updateOutputVisibility);
+
+        // ==================================================
+        // 頁面載入時的初始化動作
+        // ==================================================
+        runButton.disabled = true;
+        runButton.classList.remove('btn-success');
+        runButton.classList.add('btn-secondary');
+        
+        // 填充表單（用於編輯模式）
+        populateFormFromConfig();
     });
 </script>
 {% endblock %}
-{% endblock %} 

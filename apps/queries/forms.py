@@ -3,6 +3,7 @@
 from django import forms
 from .models import QueryDefinition
 from django.utils import timezone
+import json
 
 class QueryDefinitionForm(forms.ModelForm):
     class Meta:
@@ -10,7 +11,7 @@ class QueryDefinitionForm(forms.ModelForm):
         fields = [
             'name', 'description', 'sql_query',
             'bigquery_project_id', 'bigquery_dataset_id',
-            'schedule_frequency', 'schedule_start_datetime',
+            'schedule_config',  
             'output_target', 'output_config'
         ]
         widgets = {
@@ -20,47 +21,70 @@ class QueryDefinitionForm(forms.ModelForm):
                 'placeholder': 'SELECT * FROM `your_project.your_dataset.your_table` LIMIT 100',
                 'class': 'sql-editor'
             }),
-            'schedule_start_datetime': forms.DateTimeInput(
-                attrs={'type': 'datetime-local'},
-                format='%Y-%m-%dT%H:%M'
-            ),
-            'output_config': forms.HiddenInput(),  # Will be populated via JavaScript
+            'schedule_config': forms.HiddenInput(),
+            'output_config': forms.HiddenInput(),
         }
         help_texts = {
-            'schedule_frequency': 'Select how often you want this query to run.',
-            'schedule_start_datetime': 'When should the scheduled execution begin?',
             'output_target': 'Where should the query results be sent?',
         }
 
+    def clean_schedule_config(self):
+        """
+        清理和驗證 schedule_config JSON 資料。
+        """
+        config_str = self.cleaned_data.get('schedule_config')
+        if not config_str:
+            return {}  # 如果沒有排程，回傳空字典
+
+        try:
+            config = json.loads(config_str)
+            freq_type = config.get('frequency_type')
+
+            if freq_type and freq_type != 'NONE':
+                if 'hour' not in config or 'minute' not in config:
+                    raise forms.ValidationError("Schedule config must include 'hour' and 'minute'.")
+                
+                if freq_type == 'WEEKLY' and 'week_of_day' not in config:
+                    raise forms.ValidationError("Weekly schedule requires 'week_of_day'.")
+
+                if freq_type == 'MONTHLY' and 'month_of_day' not in config:
+                    raise forms.ValidationError("Monthly schedule requires 'month_of_day'.")
+
+            return config
+        except json.JSONDecodeError:
+            raise forms.ValidationError("Invalid JSON format in schedule_config.")
+        
+    def clean_output_config(self):
+        """
+        清理和驗證 output_config JSON 資料。
+        """
+        config_str = self.cleaned_data.get('output_config')
+        output_target = self.cleaned_data.get('output_target')
+
+        if output_target == 'NONE':
+            return {} # 如果沒有輸出目標，回傳空字典
+
+        if not config_str:
+            raise forms.ValidationError("Output configuration is required for the selected target.")
+
+        try:
+            config = json.loads(config_str)
+            if output_target == 'GOOGLE_SHEET':
+                if not config.get('sheet_id') or not config.get('sheet_tab_name'):
+                    raise forms.ValidationError("For Google Sheets, 'Sheet ID' and 'Sheet Tab Name' are required.")
+            
+            elif output_target == 'LOOKER_STUDIO':
+                if not config.get('gmail_address'):
+                     raise forms.ValidationError("For Looker Studio, 'Gmail Address' is required.")
+
+            return config
+        except json.JSONDecodeError:
+            raise forms.ValidationError("Invalid JSON format in output_config.")
+
     def clean(self):
+        """
+        整體驗證。
+        """
         cleaned_data = super().clean()
-        schedule_frequency = cleaned_data.get("schedule_frequency")
-        schedule_start_datetime = cleaned_data.get("schedule_start_datetime")
-        output_target = cleaned_data.get("output_target")
-        output_config = cleaned_data.get("output_config")
-
-        # Validate schedule settings
-        if schedule_frequency != 'NONE' and not schedule_start_datetime:
-            self.add_error('schedule_start_datetime', "Start date/time is required for scheduled queries.")
-
-        if schedule_start_datetime and schedule_start_datetime < timezone.now():
-            self.add_error('schedule_start_datetime', "Start date/time must be in the future.")
-
-        # Validate output settings
-        if output_target != 'NONE':
-            if not output_config:
-                self.add_error('output_config', "Output configuration is required when an output target is selected.")
-            else:
-                # Validate output_config based on output_target
-                if output_target == 'GOOGLE_SHEET':
-                    required_fields = ['sheet_id', 'sheet_name', 'write_mode']
-                    for field in required_fields:
-                        if field not in output_config:
-                            self.add_error('output_config', f"Missing required field: {field}")
-                elif output_target == 'LOOKER_STUDIO':
-                    required_fields = ['project_id', 'dataset_id', 'table_id', 'write_mode']
-                    for field in required_fields:
-                        if field not in output_config:
-                            self.add_error('output_config', f"Missing required field: {field}")
-
+        # 這裡可以加入更多跨欄位的驗證邏輯
         return cleaned_data

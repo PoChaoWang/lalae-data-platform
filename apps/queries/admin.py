@@ -12,14 +12,14 @@ class QueryDefinitionForm(forms.ModelForm):
         fields = [
             'name', 'description', 'sql_query',
             'bigquery_project_id', 'bigquery_dataset_id',
-            'schedule_frequency', 'schedule_start_datetime',
+            'schedule_config',
             'output_target', 'output_config'
         ]
         widgets = {
             'description': forms.Textarea(attrs={'rows': 3}),
             'sql_query': forms.Textarea(attrs={'rows': 10, 'placeholder': 'SELECT * FROM ...'}),
-            'schedule_start_datetime': forms.DateTimeInput(attrs={'type': 'datetime-local'}),
             'output_config': forms.HiddenInput(),
+            'schedule_config': forms.Textarea(attrs={'rows': 5}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -58,13 +58,6 @@ class QueryDefinitionForm(forms.ModelForm):
                 raise forms.ValidationError("You do not have permission to use this BigQuery Dataset ID.")
         return dataset_id
 
-    def clean(self):
-        cleaned_data = super().clean()
-        schedule_frequency = cleaned_data.get("schedule_frequency")
-        schedule_start_datetime = cleaned_data.get("schedule_start_datetime")
-        if schedule_frequency != 'NONE' and not schedule_start_datetime:
-            self.add_error('schedule_start_datetime', "Start date/time is required for scheduled queries.")
-        return cleaned_data
 
 # --- Helper Functions for Permissions ---
 
@@ -192,8 +185,8 @@ class QueryExecutionAdmin(admin.ModelAdmin):
 @admin.register(QueryDefinition)
 class QueryDefinitionAdmin(admin.ModelAdmin):
     form = QueryDefinitionForm
-    list_display = ('name', 'bigquery_dataset_id', 'schedule_frequency', 'output_target', 'last_run_status', 'owner', 'updated_at')
-    list_filter = ('schedule_frequency', 'output_target', 'last_run_status', 'bigquery_dataset_id')
+    list_display = ('name', 'bigquery_dataset_id', 'get_schedule_summary', 'output_target', 'last_run_status', 'owner', 'updated_at')
+    list_filter = ('output_target', 'last_run_status', 'bigquery_dataset_id')
     search_fields = ('name', 'description', 'sql_query', 'bigquery_dataset_id')
     inlines = [QueryExecutionInline]
     actions = ['run_selected_queries_action']
@@ -206,7 +199,7 @@ class QueryDefinitionAdmin(admin.ModelAdmin):
             'fields': ('bigquery_project_id', 'bigquery_dataset_id')
         }),
         ('Scheduling', {
-            'fields': ('schedule_frequency', 'schedule_start_datetime')
+            'fields': ('schedule_config',) 
         }),
         ('Output', {
             'fields': ('output_target', 'output_config')
@@ -216,6 +209,31 @@ class QueryDefinitionAdmin(admin.ModelAdmin):
         }),
     )
     readonly_fields = ('owner', 'last_run_status', 'last_run_initiated_at', 'last_successful_run_result')
+
+    @admin.display(description='Schedule Summary')
+    def get_schedule_summary(self, obj):
+        config = obj.schedule_config
+        if not isinstance(config, dict) or config.get('frequency_type') == 'NONE':
+            return "Not Scheduled"
+        
+        freq_type = config.get('frequency_type', 'N/A').capitalize()
+        hour = config.get('hour', '00')
+        minute = config.get('minute', '00')
+        time_str = f"{str(hour).zfill(2)}:{str(minute).zfill(2)}"
+
+        if freq_type == 'Daily':
+            return f"Daily at {time_str}"
+        
+        if freq_type == 'Weekly':
+            days = {'0': 'Sun', '1': 'Mon', '2': 'Tue', '3': 'Wed', '4': 'Thu', '5': 'Fri', '6': 'Sat'}
+            day_of_week = days.get(str(config.get('week_of_day')), '?')
+            return f"Weekly on {day_of_week} at {time_str}"
+
+        if freq_type == 'Monthly':
+            day_of_month = config.get('month_of_day', '?')
+            return f"Monthly on day {day_of_month} at {time_str}"
+            
+        return "Custom"
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

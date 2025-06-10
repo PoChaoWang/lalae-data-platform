@@ -45,17 +45,7 @@ class QueryDefinition(models.Model):
     # bigquery_destination_table = models.CharField(max_length=100, blank=True, null=True, help_text="若查詢結果寫入新表，可指定表名")
 
     # Schedule settings
-    schedule_frequency = models.CharField(
-        max_length=10,
-        choices=SCHEDULE_FREQUENCY_CHOICES,
-        default='NONE',
-        verbose_name="Schedule Frequency"
-    )
-    schedule_start_datetime = models.DateTimeField(
-        null=True,
-        blank=True,
-        verbose_name="Schedule Start Date/Time"
-    )
+    schedule_config = models.JSONField(default=dict, blank=True)
 
     # Output settings
     output_target = models.CharField(

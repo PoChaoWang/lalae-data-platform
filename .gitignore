@@ -8,3 +8,4 @@ apps/connections/templates/connections/connection_forms/youtube_channel.html
 .env
 PRD.md
 task.md
+**/.DS_Store

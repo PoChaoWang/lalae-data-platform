@@ -129,7 +129,7 @@ class GoogleSheetAPIClient:
             values = result.get('values', [])
 
             logger.info(f"Data fetched from Google Sheets (first 5 rows): {values[:5]}")
-            
+
             if not values:
                 logger.warning(f"No data found in sheet '{sheet_id}' tab '{tab_name}' starting from row 2.")
                 return 0
@@ -167,6 +167,7 @@ class GoogleSheetAPIClient:
                 skip_leading_rows=0, 
                 # 讓 BigQuery 根據我們預先建立的 table schema 來解析資料
                 schema=table.schema, 
+                write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
                 autodetect=False
             )
 

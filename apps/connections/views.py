@@ -69,15 +69,24 @@ class ConnectionListView(LoginRequiredMixin, ListView):
     context_object_name = "connections"
 
     def get_queryset(self):
+        prefetch_name = 'executions__triggered_by'
         # 如果是超級使用者，回傳所有連線
         if self.request.user.is_superuser:
-            return Connection.objects.select_related('client', 'data_source').all().order_by("-created_at")
+            return Connection.objects.select_related(
+                'client', 'data_source'
+            ).prefetch_related(
+                prefetch_name
+            ).all().order_by("-created_at")
 
         # 找出使用者有權限的所有客戶 (自己建立的或被分享的)
         accessible_clients = Client.objects.filter(settings__user=self.request.user)
         
         # 篩選出所有與這些客戶相關的連線
-        return Connection.objects.select_related('client', 'data_source').filter(client__in=accessible_clients).order_by("-created_at")
+        return Connection.objects.select_related(
+            'client', 'data_source'
+        ).prefetch_related(
+            prefetch_name
+        ).filter(client__in=accessible_clients).order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

@@ -2,7 +2,7 @@
 {% block title %}My Connections - {{ block.super }}{% endblock %}
 
 {% block content %}
-<div class="container"></div>
+<div class="container">
     <div class="d-flex justify-content-between align-items-center content-header">
         <h1>My Connections</h1>
         <a href="{% url 'connections:select_dataset' %}" class="btn btn-primary">Add Connection</a>
@@ -84,17 +84,79 @@
                             <td>{{ connection.target_dataset_id }}</td>
                             <td>{{ connection.updated_at|date:"Y-m-d H:i" }}</td>
                             <td>
-                                <a href="{% url 'connections:connection_detail' connection.pk %}" class="btn btn-sm btn-outline-info me-1" title="View Details">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
-                                        <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.618-2.457A2.498 2.498 0 0 0 2.5 8a2.498 2.498 0 0 0 .291 2.457A13.133 13.133 0 0 1 1.173 8zm1.828.093a11.951 11.951 0 0 0-.016.31A1.07 1.07 0 0 0 3 9.232a11.523 11.523 0 0 1 5-1.276 11.523 11.523 0 0 1 5 1.276 1.07 1.07 0 0 0 .016-.31c0-.11-.005-.218-.016-.31a11.523 11.523 0 0 1-5-1.276 11.523 11.523 0 0 1-5 1.276zM8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
-                                    </svg>
-                                </a>
-                                <a href="{% url 'connections:connection_delete' connection.pk %}" class="btn btn-sm btn-outline-danger" title="Delete">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
-                                        <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
-                                        <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
-                                    </svg>
-                                </a>
+                                <div class="btn-group" role="group" aria-label="Connection Actions">
+                                    <a href="{% url 'connections:connection_detail' connection.pk %}" class="btn btn-sm btn-outline-info" title="View Details">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eye" viewBox="0 0 16 16">
+                                            <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.618-2.457A2.498 2.498 0 0 0 2.5 8a2.498 2.498 0 0 0 .291 2.457A13.133 13.133 0 0 1 1.173 8zm1.828.093a11.951 11.951 0 0 0-.016.31A1.07 1.07 0 0 0 3 9.232a11.523 11.523 0 0 1 5-1.276 11.523 11.523 0 0 1 5 1.276 1.07 1.07 0 0 0 .016-.31c0-.11-.005-.218-.016-.31a11.523 11.523 0 0 1-5-1.276 11.523 11.523 0 0 1-5 1.276zM8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+                                        </svg>
+                                    </a>
+                                    <a href="{% url 'connections:connection_delete' connection.pk %}" class="btn btn-sm btn-outline-danger" title="Delete">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16">
+                                            <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+                                            <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/>
+                                        </svg>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-executions-{{ connection.pk }}" aria-expanded="false" aria-controls="collapse-executions-{{ connection.pk }}" title="Show Executions">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-chevron-down" viewBox="0 0 16 16">
+                                          <path fill-rule="evenodd" d="M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                </td>
+                        </tr>
+                        <tr>
+                            <td colspan="8" class="p-0" style="border: none;">
+                                <div class="collapse" id="collapse-executions-{{ connection.pk }}">
+                                    <div class="card card-body bg-light">
+                                        <h5>Execution History for: {{ connection.display_name }}</h5>
+                                        {% if connection.connectionexecution_set.all %}
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered mb-0">
+                                                    <thead class="table-secondary">
+                                                        <tr>
+                                                            <th>Trigger Method</th>
+                                                            <th>Status</th>
+                                                            <th>User</th>
+                                                            <th>Message</th>
+                                                            <th>Config Snapshot</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for execution in connection.connectionexecution_set.all %}
+                                                        <tr>
+                                                            <td><span class="badge bg-info text-dark">{{ execution.get_trigger_method_display }}</span></td>
+                                                            <td>
+                                                                <span class="badge 
+                                                                    {% if execution.status == 'SUCCESS' %}bg-success
+                                                                    {% elif execution.status == 'FAILED' %}bg-danger
+                                                                    {% elif execution.status == 'IN_PROGRESS' %}bg-primary
+                                                                    {% else %}bg-secondary
+                                                                    {% endif %}">
+                                                                    {{ execution.status }}
+                                                                </span>
+                                                            </td>
+                                                            <td>{{ execution.triggered_by.username|default:"System" }}</td>
+                                                            <td><small>{{ execution.message|default:"-" }}</small></td>
+                                                            <td>
+                                                                {% if execution.config_snapshot %}
+                                                                <details>
+                                                                    <summary style="cursor: pointer;">View Config</summary>
+                                                                    <pre class="bg-dark text-white p-2 rounded" style="max-height: 200px; overflow-y: auto;"><code>{{ execution.config_snapshot }}</code></pre>
+                                                                </details>
+                                                                {% else %}
+                                                                    -
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        {% else %}
+                                            <p class="mb-0 text-muted">No execution history found for this connection.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

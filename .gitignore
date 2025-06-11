@@ -1,4 +1,5 @@
 my-project-for-bigquery-445809-59aa1ed37bf7.json
+my-project-for-bigquery-445809-144bbd6237f0.json
 data-platform-env/
 .cursor/
 apps/connections/management/
@@ -11,3 +12,5 @@ task.md
 .DS_Store
 **/.DS_Store
 apps/queries/templates/queries/pervious_form.py
+
+.vscode/

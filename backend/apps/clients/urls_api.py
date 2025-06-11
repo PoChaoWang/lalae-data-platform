@@ -5,10 +5,8 @@ from . import views
 
 app_name = 'clients'
 
-# -- API Router --
 router = DefaultRouter()
-router.register(r'', views.ClientViewSet, basename='client-api')
-
+router.register(r'clients', views.ClientViewSet, basename='client-api')
 
 urlpatterns = [
     path('', views.ClientListView.as_view(), name='client-list'),
@@ -16,6 +14,5 @@ urlpatterns = [
     path('<uuid:pk>/edit/', views.ClientDetailView.as_view(), name='client-update'),
     path('<uuid:pk>/delete/', views.ClientDeleteView.as_view(), name='client-delete'),
 
-    # --- API Path ---
     path('api/', include(router.urls)),
 ] 

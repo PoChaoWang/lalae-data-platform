@@ -1,10 +1,19 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView
+from django.contrib.auth.decorators import login_required
+from django.views.generic import ListView, CreateView, DetailView, DeleteView
 from django.urls import reverse_lazy
 from django.contrib import messages
 from .models import Client
 from .forms import ClientForm
+from django.views.decorators.csrf import csrf_exempt
+import json
+from rest_framework import viewsets, permissions
+from .serializers import ClientSerializer
+
+from django.http import JsonResponse, HttpResponse
+
+import re
 
 class ClientListView(LoginRequiredMixin, ListView):
     model = Client
@@ -68,7 +77,7 @@ class ClientCreateView(LoginRequiredMixin, CreateView):
             form.add_error('name', str(e))
             return self.form_invalid(form)
     
-class ClientUpdateView(LoginRequiredMixin, UpdateView):
+class ClientDetailView(LoginRequiredMixin, DetailView):
     model = Client
     form_class = ClientForm
     template_name = 'clients/client_form.html'
@@ -111,3 +120,62 @@ class ClientDeleteView(LoginRequiredMixin, DeleteView):
         
         # 一般使用者只能刪除他們是擁有者 (is_owner=True) 的客戶
         return Client.objects.filter(settings__user=self.request.user, settings__is_owner=True)
+
+
+class ClientViewSet(viewsets.ModelViewSet):
+    """
+    一個 ViewSet 就處理了所有對 Client 的 API 操作 (CRUD)。
+    """
+    serializer_class = ClientSerializer
+    # IsAuthenticated 確保只有登入的使用者才能存取此 API
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        覆寫這個方法，確保使用者只能看到他們有權限的客戶。
+        這段邏輯和您原本在 ClientListView 中的邏輯完全相同。
+        """
+        if self.request.user.is_superuser:
+            return Client.objects.all().order_by('-created_at')
+        
+        return Client.objects.filter(settings__user=self.request.user).distinct().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        """
+        在建立新物件時，自動將 created_by 設為當前登入的使用者。
+        """
+        client = serializer.save(created_by=self.request.user)
+
+        try:
+            # 清理名稱
+            clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', client.name.lower())
+            clean_name = re.sub(r'_+', '_', clean_name).strip('_')
+            
+            # 清理 UUID - 移除 - 符號
+            clean_id = str(client.id).replace('-', '_')
+            
+            dataset_id = f"{clean_name}_{clean_id}"
+            
+            # 設定 BigQuery dataset ID 並再次儲存
+            client.bigquery_dataset_id = dataset_id
+            client.save()
+            
+            # 儲存客戶設定
+            client.save_client_setting(
+                user=self.request.user,
+                is_owner=True,
+                can_edit=True,
+                can_view_gcp=True,
+                can_manage_gcp=True
+            )
+
+            # 呼叫非同步任務來建立 BigQuery dataset
+            client.create_bigquery_dataset_async(user_id=self.request.user.id)
+            
+        except Exception as e:
+            # 如果後續步驟出錯，可以考慮刪除剛剛建立的 client，
+            # 或者至少記錄下錯誤。
+            print(f"Error during post-create operations for client {client.id}: {e}")
+            # 這裡可以引發一個錯誤，讓前端知道出了問題
+            # from rest_framework.exceptions import APIException
+            # raise APIException("Failed to perform post-creation tasks.")

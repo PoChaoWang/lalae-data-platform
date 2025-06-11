@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from .forms import UserRegisterForm
 from django.http import JsonResponse
+from django.contrib.auth import logout
 
 def register(request):
     if request.method == 'POST':
@@ -35,3 +36,11 @@ def check_user_status(request):
     else:
         # 如果未登入，回傳 false
         return JsonResponse({'isAuthenticated': False})
+    
+def logout_view(request):
+    """
+    處理登出請求，可接受 GET。
+    """
+    logout(request) # 執行登出操作
+    # 成功後，將使用者重導向回 Next.js 的首頁
+    return redirect('http://localhost:3000')

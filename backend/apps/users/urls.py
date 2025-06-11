@@ -15,10 +15,7 @@ urlpatterns = [
         success_url=f'{NEXTJS_APP_URL}/dashboard'
     ), name='login'),
 
-    path('logout/', auth_views.LogoutView.as_view(
-        # 登出後，重導向回 Next.js 的首頁
-        next_page=NEXTJS_APP_URL
-    ), name='logout'),
+    path('logout/', views.logout_view, name='logout'),
 
     path('password_reset/', 
          auth_views.PasswordResetView.as_view(

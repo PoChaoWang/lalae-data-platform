@@ -1,0 +1,37 @@
+<div class="mb-3">
+    <label for="{{ form.network_code.id_for_label }}" class="form-label">Network Code</label>
+    <input type="text" 
+           class="form-control {% if form.network_code.errors %}is-invalid{% endif %}" 
+           id="{{ form.network_code.id_for_label }}"
+           name="{{ form.network_code.html_name }}"
+           value="{{ form.network_code.value|default:'' }}"
+           placeholder="12345678"
+           required>
+    {% if form.network_code.errors %}
+    <div class="invalid-feedback">
+        {% for error in form.network_code.errors %}
+            {{ error }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    <div class="form-text">Your Google Ad Manager network code.</div>
+</div>
+
+<div class="mb-3">
+    <label for="{{ form.application_name.id_for_label }}" class="form-label">Application Name</label>
+    <input type="text" 
+           class="form-control {% if form.application_name.errors %}is-invalid{% endif %}" 
+           id="{{ form.application_name.id_for_label }}"
+           name="{{ form.application_name.html_name }}"
+           value="{{ form.application_name.value|default:'' }}"
+           placeholder="My Ad Manager Integration"
+           required>
+    {% if form.application_name.errors %}
+    <div class="invalid-feedback">
+        {% for error in form.application_name.errors %}
+            {{ error }}
+        {% endfor %}
+    </div>
+    {% endif %}
+    <div class="form-text">A name to identify your application in API requests.</div>
+</div>

@@ -14,3 +14,6 @@ task.md
 apps/queries/templates/queries/pervious_form.py
 
 .vscode/
+sturture.md
+.cursorignore
+frondend-sturture.md

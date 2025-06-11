@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // 確保你傳送了憑證 (cookie)
         const response = await fetch('http://localhost:8000/users/api/status/', {
-          credentials: 'include', // ★★★ 這是關鍵！★★★
+          credentials: 'include', 
         });
 
         if (response.ok) {

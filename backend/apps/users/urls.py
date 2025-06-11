@@ -4,13 +4,21 @@ from . import views
 
 app_name = 'users'
 
+NEXTJS_APP_URL = 'http://localhost:3000'
+
 urlpatterns = [
     path('register/', views.register, name='register'),
+
     path('login/', auth_views.LoginView.as_view(
         template_name='users/login.html',
-        success_url=reverse_lazy('dashboard')
+        success_url=f'{NEXTJS_APP_URL}/dashboard'
     ), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
+
+    path('logout/', auth_views.LogoutView.as_view(
+        # 登出後，重導向回 Next.js 的首頁
+        next_page=NEXTJS_APP_URL
+    ), name='logout'),
+
     path('password_reset/', 
          auth_views.PasswordResetView.as_view(
              template_name='users/password_reset_form.html',
@@ -19,6 +27,7 @@ urlpatterns = [
              success_url=reverse_lazy('users:password_reset_done')
          ),
          name='password_reset'),
+
     path('password_reset/done/',
          auth_views.PasswordResetDoneView.as_view(
              template_name='users/password_reset_done.html'

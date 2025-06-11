@@ -109,9 +109,12 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.queries",
     "apps.connections",
+
+    "corsheaders"
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -318,3 +321,23 @@ FACEBOOK_AD_ACCOUNT_ID = env('FACEBOOK_AD_ACCOUNT_ID')
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 USE_X_FORWARDED_HOST = True
+
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+# 為了讓 Next.js (localhost:3000) 能收到並回傳 Django (localhost:8000) 的 cookie，
+# 在開發時，我們需要放寬 SameSite 設定。
+# 注意：在正式上線環境 (production) 且使用不同網域時，需要更嚴謹的設定。
+SESSION_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SAMESITE = 'None'
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:3000',
+]
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True

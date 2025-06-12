@@ -123,22 +123,18 @@ class ClientDeleteView(LoginRequiredMixin, DeleteView):
 
 
 class ClientViewSet(viewsets.ModelViewSet):
-    """
-    一個 ViewSet 就處理了所有對 Client 的 API 操作 (CRUD)。
-    """
+
     serializer_class = ClientSerializer
-    # IsAuthenticated 確保只有登入的使用者才能存取此 API
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """
-        覆寫這個方法，確保使用者只能看到他們有權限的客戶。
-        這段邏輯和您原本在 ClientListView 中的邏輯完全相同。
-        """
+        user = self.request.user
+        base_queryset = Client.objects.select_related('created_by')
+
         if self.request.user.is_superuser:
             return Client.objects.all().order_by('-created_at')
         
-        return Client.objects.filter(settings__user=self.request.user).distinct().order_by('-created_at')
+        return base_queryset.filter(settings__user=user).distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
         """

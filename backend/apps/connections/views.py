@@ -1,4 +1,4 @@
-# connections/views.py
+# backend/apps/connections/views.py
 import logging
 import urllib.parse
 from django.shortcuts import render, get_object_or_404, redirect
@@ -52,16 +52,200 @@ from .apis.facebook_ads import (
     FacebookAdsAPIClient, 
     get_facebook_ads_page_context, # This will be used
     get_facebook_oauth_url,
-    
+    get_facebook_fields_structure 
 )
 
 from .apis.google_sheet import GoogleSheetAPIClient
-
 from .tasks import sync_connection_data_task
 from itertools import chain
+from rest_framework import viewsets, status
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from .models import GoogleAdsField
+from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
+from allauth.socialaccount.models import SocialToken
+from .models import Client 
+
+from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer
 
 logger = logging.getLogger(__name__)
 
+# ===================================================================
+# ================== NEW: API ViewSets ==============================
+# ===================================================================
+
+class ClientViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    提供 Client 列表的唯讀 API 端點
+    """
+    serializer_class = ClientSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return Client.objects.all().order_by('name')
+        # 一般使用者只能看到他們有權限的客戶
+        return Client.objects.filter(settings__user=self.request.user).distinct().order_by('name')
+    
+    
+
+class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    提供 DataSource 列表的唯讀 API 端點
+    """
+    serializer_class = DataSourceSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = DataSource.objects.filter(
+        name__in=["GOOGLE_ADS", "FACEBOOK_ADS", "GOOGLE_SHEET"]
+    )
+    lookup_field = 'name'
+
+
+class ConnectionViewSet(viewsets.ModelViewSet):
+    """
+    一個 ViewSet 用於檢視和編輯 Connection 實例。
+    """
+    serializer_class = ConnectionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        此 ViewSet 應該只回傳經過認證的使用者有權限的 connections。
+        """
+        user = self.request.user
+        if user.is_superuser:
+            return Connection.objects.all().order_by("-created_at")
+
+        accessible_clients = Client.objects.filter(settings__user=user)
+        return Connection.objects.filter(client__in=accessible_clients).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        """
+        在建立新連線時，自動設定 user 和初始狀態。
+        """
+        # 注意：client_id 和 data_source_id 的處理已移至 Serializer 的 create 方法中
+        connection = serializer.save(user=self.request.user, status="PENDING")
+        
+        # 觸發非同步任務
+        logger.info(f"Triggering sync task for new connection {connection.pk}")
+        sync_connection_data_task.delay(
+            connection.pk,
+            triggered_by_user_id=self.request.user.id
+        )
+
+    @action(detail=True, methods=['post'], url_path='clone')
+    def clone(self, request, pk=None):
+        """
+        複製一個現有的 Connection。
+        對應前端的 'Clone' 按鈕 -> POST /api/connections/{id}/clone/
+        """
+        original_connection = self.get_object()
+        
+        # 建立新物件，但不儲存
+        new_connection = original_connection
+        new_connection.pk = None  # 設為 None 來建立新紀錄
+        new_connection.id = None
+        new_connection.display_name = f"{original_connection.display_name} (Copy)"
+        new_connection.status = "PENDING"
+        new_connection.created_at = None # 會自動設定
+        new_connection.updated_at = None # 會自動設定
+        
+        # 儲存新物件
+        new_connection.save()
+        
+        logger.info(f"Cloned connection {original_connection.pk} to new connection {new_connection.pk}")
+        
+        # 也可以選擇性觸發一次同步
+        sync_connection_data_task.delay(
+            new_connection.pk,
+            triggered_by_user_id=request.user.id
+        )
+
+        serializer = self.get_serializer(new_connection)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='run-sync')
+    def run_sync(self, request, pk=None):
+        """
+        手動觸發一次資料同步。
+        對應前端的 'Sync Now' 按鈕 -> POST /api/connections/{id}/run-sync/
+        """
+        connection = self.get_object()
+        if not connection.is_enabled:
+            return Response(
+                {"error": "Connection is disabled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        sync_connection_data_task.delay(
+            connection.pk,
+            triggered_by_user_id=request.user.id
+        )
+        
+        return Response(
+            {"status": f"Sync task for '{connection.display_name}' has been triggered."},
+            status=status.HTTP_200_OK
+        )
+
+@api_view(['GET'])
+def get_google_ads_resources_api(request):
+    resources = GoogleAdsField.objects.filter(category='RESOURCE').order_by('field_name')
+    data = [{'name': r.field_name, 'display': r.field_name.replace('_', ' ').title()} for r in resources]
+    return Response(data)
+
+# ✨ 新增：提供 Facebook Ad Accounts 選項的 API
+@api_view(['GET'])
+def get_facebook_ad_accounts_api(request):
+    client_id = request.query_params.get('client_id')
+    if not client_id:
+        return Response({"error": "client_id is required"}, status=400)
+    
+    try:
+        client = Client.objects.get(id=client_id)
+        if not client.facebook_social_account:
+            return Response({"error": "Client not linked to a Facebook account"}, status=400)
+
+        token = SocialToken.objects.get(account=client.facebook_social_account)
+        api_client = FacebookAdsAPIClient(
+            app_id=settings.FACEBOOK_APP_ID,
+            app_secret=settings.FACEBOOK_APP_SECRET,
+            access_token=token.token
+        )
+        accounts = api_client.get_ad_accounts()
+        return Response(accounts)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+# ✨ 新增：提供 Facebook 所有欄位定義的 API
+@api_view(['GET'])
+def get_facebook_all_fields_api(request):
+    """
+    一個健壯的 API 端點，用於提供 Facebook 所有欄位的定義。
+    它直接呼叫一個專門的資料函式，並回傳由 DRF 序列化的 JSON。
+    """
+    try:
+        # 直接呼叫我們新建的函式，它會回傳一個乾淨的 Python 字典
+        all_fields_data = get_facebook_fields_structure()
+        return Response(all_fields_data)
+
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error(f"獲取 Facebook 欄位時發生嚴重錯誤: {e}", exc_info=True)
+        return Response(
+            {"error": "Server configuration error: Could not load Facebook field definitions."}, 
+            status=500
+        )
+    except Exception as e:
+        logger.error(f"處理 get_facebook_all_fields_api 時發生未知錯誤: {e}", exc_info=True)
+        return Response(
+            {"error": "An unexpected server error occurred."}, 
+            status=500
+        )
+
+# ===================================================================
+# =========== EXISTING VIEWS (to be replaced by API) ================
+# ===================================================================
 
 class ConnectionListView(LoginRequiredMixin, ListView):
     model = Connection
@@ -809,22 +993,28 @@ def oauth_callback(request): # Primarily for Google via AllAuth
         logger.error(f"Unexpected error during OAuth callback: {e}")
         messages.error(request, "An error occurred while linking the account. Please try again.")
     
-    # 重導向邏輯
-    redirect_url = request.session.pop('final_redirect_after_oauth_link', None)
-    if not redirect_url:
-        # 如果沒有儲存的重導向 URL，嘗試回到連接建立頁面
-        base_url = reverse('connections:connection_create', kwargs={
-            'source_name': 'GOOGLE_ADS',
-            'client_id': client_id
-        })
-        dataset_id = request.session.get('selected_dataset_id')
-        if dataset_id:
-            redirect_url = f"{base_url}?dataset_id={dataset_id}"
-        else:
-            redirect_url = base_url
+    # Redirect in the Backend
+    # redirect_url = request.session.pop('final_redirect_after_oauth_link', None)
+
+    # if not redirect_url:
+    #     # 如果沒有儲存的重導向 URL，嘗試回到連接建立頁面
+    #     base_url = reverse('connections:connection_create', kwargs={
+    #         'source_name': 'GOOGLE_ADS',
+    #         'client_id': client_id
+    #     })
+    #     dataset_id = request.session.get('selected_dataset_id')
+    #     if dataset_id:
+    #         redirect_url = f"{base_url}?dataset_id={dataset_id}"
+    #     else:
+    #         redirect_url = base_url
     
-    logger.info(f"Redirecting to: {redirect_url}")
-    return redirect(redirect_url)
+    # logger.info(f"Redirecting to: {redirect_url}")
+    # return redirect(redirect_url)
+
+    # Redirect in the Frontend
+    final_redirect_url = 'http://localhost:3000/auth/callback'
+    logger.info(f"Redirecting to fixed frontend callback page: {final_redirect_url}")
+    return redirect(final_redirect_url)
 
 class GoogleOAuth2CustomCallbackView(OAuth2CallbackView, View):
     adapter_class = GoogleOAuth2Adapter
@@ -948,22 +1138,22 @@ def facebook_oauth_callback(request):
 
         messages.success(request, f"Facebook account '{user_info.get('name', user_info['id'])}' successfully authorized and linked to client {client.name}.")
         
-        # Get the base URL for connection create
-        base_url = reverse('connections:connection_create', kwargs={
-            'source_name': 'FACEBOOK_ADS',
-            'client_id': client_id
-        })
-        
-        # Get dataset_id from session
-        dataset_id = request.session.get('selected_dataset_id')
-        
-        # Construct the final redirect URL
-        if dataset_id:
-            final_url = f"{base_url}?dataset_id={dataset_id}"
-        else:
-            final_url = base_url
+        # Redirect in the Backend
+        # base_url = reverse('connections:connection_create', kwargs={
+        #     'source_name': 'FACEBOOK_ADS',
+        #     'client_id': client_id
+        # })
+        # dataset_id = request.session.get('selected_dataset_id')
+        # if dataset_id:
+        #     final_url = f"{base_url}?dataset_id={dataset_id}"
+        # else:
+        #     final_url = base_url
             
-        return redirect(final_url)
+        # return redirect(final_url)
+
+        final_redirect_url = 'http://localhost:3000/auth/callback'
+        logger.info(f"Redirecting to fixed frontend callback page: {final_redirect_url}")
+        return redirect(final_redirect_url)
 
     except requests.exceptions.HTTPError as e:
         logger.error(f"Facebook OAuth HTTPError during token exchange: {e.response.text}", exc_info=True)

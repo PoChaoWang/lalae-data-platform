@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { Client } from '@/lib/definitions';
-
+import ProtectedComponent from '@/components/ProtectedComponent'; 
 /**
  * 這是一個在伺服器端執行的非同步函式，專門用來獲取客戶列表。
  * @returns Promise<Client[]> - 回傳一個包含客戶資料的陣列 Promise。
  */
 async function getClients(): Promise<Client[]> {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const sessionid = cookieStore.get('sessionid')?.value;
 
   if (!sessionid) {
@@ -63,54 +63,56 @@ export default async function ClientsPage() {
   const clients = await getClients();
 
   return (
-    <div className="container mt-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1>Clients</h1>
-        <Link href="/clients/new" className="btn btn-primary">
-          <i className="fas fa-plus me-2"></i> New Client
-        </Link>
-      </div>
-      <div className="table-responsive">
-        <table className="table table-striped table-hover">
-          <thead className="table-dark">
-            <tr>
-              <th>Name</th>
-              <th>BigQuery Dataset ID</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Created By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* 這裡現在是安全的，因為 getClients 保證回傳陣列 */}
-            {clients.length === 0 ? (
+    <ProtectedComponent>
+      <div className="container mt-4">
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <h1>Clients</h1>
+          <Link href="/clients/new" className="btn btn-primary">
+            <i className="fas fa-plus me-2"></i> New Client
+          </Link>
+        </div>
+        <div className="table-responsive">
+          <table className="table table-striped table-hover">
+            <thead className="table-dark">
               <tr>
-                <td colSpan={5} className="text-center py-4">No clients found.</td>
+                <th>Name</th>
+                <th>BigQuery Dataset ID</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Created By</th>
               </tr>
-            ) : (
-              clients.map((client) => (
-                <tr key={client.id}>
-                  <td>
-                    <Link href={`/clients/${client.id}`} className="fw-bold text-decoration-none">
-                      {client.name}
-                    </Link>
-                  </td>
-                  <td><code>{client.bigquery_dataset_id || '-'}</code></td>
-                  <td>
-                    <span className={`badge ${client.is_active ? 'bg-success' : 'bg-secondary'}`}>
-                      {client.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                  </td>
-                  {/* 使用 client.created_at，並確保它是有效的日期字串 */}
-                  <td>{client.created_at ? new Date(client.created_at).toLocaleDateString() : '-'}</td>
-                  {/* 關鍵修正：使用 client.created_by 來顯示名稱 */}
-                  <td>{client.created_by || '-'}</td>
+            </thead>
+            <tbody>
+              {/* 這裡現在是安全的，因為 getClients 保證回傳陣列 */}
+              {clients.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center py-4">No clients found.</td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                clients.map((client) => (
+                  <tr key={client.id}>
+                    <td>
+                      <Link href={`/clients/${client.id}`} className="fw-bold text-decoration-none">
+                        {client.name}
+                      </Link>
+                    </td>
+                    <td><code>{client.bigquery_dataset_id || '-'}</code></td>
+                    <td>
+                      <span className={`badge ${client.is_active ? 'bg-success' : 'bg-secondary'}`}>
+                        {client.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    {/* 使用 client.created_at，並確保它是有效的日期字串 */}
+                    <td>{client.created_at ? new Date(client.created_at).toLocaleDateString() : '-'}</td>
+                    {/* 關鍵修正：使用 client.created_by 來顯示名稱 */}
+                    <td>{client.created_by || '-'}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
     </div>
+    </ProtectedComponent>
   );
 }

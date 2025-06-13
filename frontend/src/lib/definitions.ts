@@ -22,12 +22,48 @@ export type Client = {
     is_active: boolean;
     bigquery_dataset_id: string | null; // BigQuery ID 可能在建立初期是 null
     created_at: string; // 在 JSON 中，DateTime 物件會被序列化成 ISO 格式的字串
-    created_by__username: string | null; // 建立者的 username，可能為 null
+    created_by: string | null; // 建立者的 username，可能為 null
     updated_at: string | null; // ISO 格式的字串
     };
   
-  // 你也可以為其他 App (例如 Queries, Connections) 在這裡定義它們的型別
-  // export type Query = { ... };
-  // export type Connection = { ... };
+export type SelectableClient = {
+  id: string;
+  name: string;
+  bigquery_dataset_id: string;
+  facebook_social_account: SocialAccountInfo | null;
+  google_social_account: SocialAccountInfo | null;
+};
+
+export type SocialAccountInfo = {
+  id: number;
+  provider: string;
+  uid: string;
+  name: string;
+  email: string;
+};
   
-  
+
+export type DataSource = {
+  id: number;
+  name: string;
+  display_name: string;
+};
+
+
+export type Connection = {
+  id: number;
+  is_enabled: boolean;
+  display_name: string;
+  data_source: DataSource; // 巢狀使用 DataSource 型別
+  client: { 
+    id: string;
+    name: string; 
+  };
+  status: string;
+  target_dataset_id: string;
+  updated_at: string;
+  last_execution_status: string | null;
+  last_execution_time: string | null;
+  config: any; // 在真實應用中可以為不同的 config 定義更精確的型別
+};
+

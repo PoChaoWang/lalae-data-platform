@@ -17,3 +17,6 @@ apps/queries/templates/queries/pervious_form.py
 sturture.md
 .cursorignore
 frondend-sturture.md
+
+package.json
+package-lock.json

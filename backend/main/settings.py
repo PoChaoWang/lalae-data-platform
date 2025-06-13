@@ -206,7 +206,8 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-LOGIN_REDIRECT_URL = "/dashboard/"
+# LOGIN_REDIRECT_URL = "/dashboard/"
+LOGIN_REDIRECT_URL = 'https://30e1-114-24-81-73.ngrok-free.app'
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = "/users/login/"
 
@@ -325,7 +326,9 @@ USE_X_FORWARDED_HOST = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://127.0.0.1:3000",
     "http://192.168.1.104:3000",
+    "https://30e1-114-24-81-73.ngrok-free.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -338,6 +341,7 @@ CSRF_COOKIE_SAMESITE = 'None'
 
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:3000',
+    "http://127.0.0.1:3000",
 ]
 
 SESSION_COOKIE_SECURE = True

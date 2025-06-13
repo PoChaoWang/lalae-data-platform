@@ -492,3 +492,30 @@ def get_facebook_field_choices():
         logger.error(f"載入 Facebook 欄位時發生未知錯誤：{e}", exc_info=True)
     
     return [] # 如果出錯，返回一個空列表
+
+def get_facebook_fields_structure():
+    """
+    從靜態 JSON 檔案讀取 Facebook 欄位定義，並直接回傳 Python 字典。
+    這是為 API 端點設計的乾淨的資料提供函式。
+    """
+    json_file_path = os.path.join(settings.BASE_DIR, 'backend', 'apps', 'connections', 'apis', 'static_data', 'facebook_fields.json')
+    logger.info(f"Getting Facebook fields structure from {json_file_path}")
+
+    try:
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        if not data:
+            logger.warning(f"Failed to load Facebook fields structure from {json_file_path}.")
+            return {}
+            
+        logger.info(f"Successfully loaded Facebook fields structure from {json_file_path}.")
+        return data
+
+    except FileNotFoundError:
+        logger.error(f"Could not find required data file: {json_file_path}")
+        # 在 API 的情況下，拋出異常可能比回傳空字典更好，這樣錯誤更明顯
+        raise FileNotFoundError(f"Required data file not found: {json_file_path}")
+    except json.JSONDecodeError as e:
+        logger.error(f"Error decoding JSON from {json_file_path}: {e}")
+        raise json.JSONDecodeError(f"Error decoding JSON from {json_file_path}", e.doc, e.pos)    

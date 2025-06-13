@@ -1,5 +1,5 @@
 'use client';
-
+import ProtectedComponent from '@/components/ProtectedComponent'; 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -82,75 +82,77 @@ export default function NewClientPage() {
   };
 
   return (
-    <div className="container mt-4">
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <h1>Create New Client</h1>
-        <Link href="/clients" className="btn btn-outline-secondary">
-          <i className="bi bi-arrow-left"></i> Back to Client List
-        </Link>
-      </div>
+    <ProtectedComponent>
+      <div className="container mt-4">
+        <div className="d-flex justify-content-between align-items-center mb-4">
+          <h1>Create New Client</h1>
+          <Link href="/clients" className="btn btn-outline-secondary">
+            <i className="bi bi-arrow-left"></i> Back to Client List
+          </Link>
+        </div>
 
-      <div className="row justify-content-center">
-        <div className="col-md-8">
-          <div className="card">
-            <div className="card-body">
-              <form onSubmit={handleSubmit} noValidate>
-                {/* 顯示全域錯誤 (例如 CSRF 或伺服器內部錯誤) */}
-                {errors.non_field_errors && (
-                  <div className="alert alert-danger">
-                    {Array.isArray(errors.non_field_errors) ? errors.non_field_errors.map((err: string, i: number) => <p key={i} className="mb-0">{err}</p>) : <p>{errors.non_field_errors}</p>}
-                  </div>
-                )}
-                {errors.detail && (
-                   <div className="alert alert-danger">{errors.detail}</div>
-                )}
-
-
-                {/* 客戶名稱欄位 */}
-                <div className="mb-3">
-                  <label htmlFor="name" className="form-label">Client Name</label>
-                  <input
-                    type="text"
-                    className={`form-control ${errors.name ? 'is-invalid' : ''}`}
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    disabled={isSubmitting}
-                  />
-                  {errors.name && (
-                    <div className="invalid-feedback">
-                      {/* +++ 為 err 加上 string 類型 +++ */}
-                      {errors.name.map((err: string, i: number) => <p key={i} className="mb-0">{err}</p>)}
+        <div className="row justify-content-center">
+          <div className="col-md-8">
+            <div className="card">
+              <div className="card-body">
+                <form onSubmit={handleSubmit} noValidate>
+                  {/* 顯示全域錯誤 (例如 CSRF 或伺服器內部錯誤) */}
+                  {errors.non_field_errors && (
+                    <div className="alert alert-danger">
+                      {Array.isArray(errors.non_field_errors) ? errors.non_field_errors.map((err: string, i: number) => <p key={i} className="mb-0">{err}</p>) : <p>{errors.non_field_errors}</p>}
                     </div>
                   )}
-                </div>
+                  {errors.detail && (
+                    <div className="alert alert-danger">{errors.detail}</div>
+                  )}
 
-                {/* 啟用狀態 */}
-                <div className="mb-3">
-                  <div className="form-check">
+
+                  {/* 客戶名稱欄位 */}
+                  <div className="mb-3">
+                    <label htmlFor="name" className="form-label">Client Name</label>
                     <input
-                      type="checkbox"
-                      className="form-check-input"
-                      id="isActive"
-                      checked={isActive}
-                      onChange={(e) => setIsActive(e.target.checked)}
+                      type="text"
+                      className={`form-control ${errors.name ? 'is-invalid' : ''}`}
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
                       disabled={isSubmitting}
                     />
-                    <label className="form-check-label" htmlFor="isActive">Is Active</label>
+                    {errors.name && (
+                      <div className="invalid-feedback">
+                        {/* +++ 為 err 加上 string 類型 +++ */}
+                        {errors.name.map((err: string, i: number) => <p key={i} className="mb-0">{err}</p>)}
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                <div className="d-grid gap-2">
-                  <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                    {isSubmitting ? 'Submitting...' : 'Create Client'}
-                  </button>
-                </div>
-              </form>
+                  {/* 啟用狀態 */}
+                  <div className="mb-3">
+                    <div className="form-check">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        id="isActive"
+                        checked={isActive}
+                        onChange={(e) => setIsActive(e.target.checked)}
+                        disabled={isSubmitting}
+                      />
+                      <label className="form-check-label" htmlFor="isActive">Is Active</label>
+                    </div>
+                  </div>
+
+                  <div className="d-grid gap-2">
+                    <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
+                      {isSubmitting ? 'Submitting...' : 'Create Client'}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </ProtectedComponent>
   );
 }

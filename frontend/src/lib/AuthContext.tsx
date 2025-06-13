@@ -26,7 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkStatus = async () => {
       try {
         // 確保你傳送了憑證 (cookie)
-        const response = await fetch('http://localhost:8000/users/api/status/', {
+        // const response = await fetch('http://localhost:8000/users/api/status/', {
+        //   credentials: 'include', 
+        // });
+        const response = await fetch('https://98dd-114-24-81-73.ngrok-free.app/users/api/status/', {
           credentials: 'include', 
         });
 
@@ -46,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     checkStatus();
   }, []); // 空依賴陣列確保只執行一次
-
+  
   return (
     <AuthContext.Provider value={{ user, loading }}>
       {children}

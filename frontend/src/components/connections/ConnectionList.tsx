@@ -1,9 +1,15 @@
 // /components/connections/ConnectionList.tsx
 'use client'; // 標記為客戶端元件
 
-import { useState, useEffect } from 'react'; // 匯入 hooks
+import { useState, useEffect, Fragment } from 'react'; // 匯入 hooks
 import { useRouter } from 'next/navigation';
-import type { Connection } from '@/lib/definitions';
+import type { Connection, ConnectionExecution } from '@/lib/definitions';
+import { BsChevronDown, BsChevronUp } from 'react-icons/bs';
+
+import Spinner from 'react-bootstrap/Spinner';
+import Alert from 'react-bootstrap/Alert';
+import Badge from 'react-bootstrap/Badge';
+
 
 // Pleae change the URL in the env.local file if you need
 // const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
@@ -16,7 +22,15 @@ export default function ConnectionList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // ✨ 關鍵：使用 useEffect 在元件掛載後從瀏覽器獲取資料
+  const [showModal, setShowModal] = useState(false);
+  const [selectedConnection, setSelectedConnection] = useState<Connection | null>(null);
+
+  const [expandedConnectionId, setExpandedConnectionId] = useState<number | null>(null);
+  const [history, setHistory] = useState<ConnectionExecution[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+
   useEffect(() => {
     const fetchConnections = async () => {
       try {
@@ -43,6 +57,58 @@ export default function ConnectionList() {
 
     fetchConnections();
   }, []); // 空依賴陣列確保此 effect 只在元件首次渲染後執行一次
+
+  const handleToggleExpand = async (connectionId: number, event: React.MouseEvent) => {
+    event.stopPropagation(); // 防止觸發整行的點擊事件 (跳轉頁面)
+
+    // 如果點擊的是已經展開的行，則收合它
+    if (expandedConnectionId === connectionId) {
+      setExpandedConnectionId(null);
+      return;
+    }
+
+    // 展開新的一行
+    setExpandedConnectionId(connectionId);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setHistory([]);
+
+    try {
+      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/executions/`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || `Request failed with status ${res.status}`);
+      }
+      setHistory(await res.json());
+    } catch (err: any) {
+      setHistoryError(err.message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // 您的 getStatusBadge 函式 (已修改以支援兩種狀態)
+  const getStatusBadge = (status: string, type: 'connection' | 'execution'): string => {
+    // 連線主列表的狀態顏色
+    const connectionMap: { [key: string]: string } = {
+        'ACTIVE': 'success', 
+        'PENDING': 'info',
+        'ERROR': 'danger', 
+        'DISABLED': 'secondary'
+    };
+    // 執行紀錄的狀態顏色
+    const executionMap: { [key: string]: string } = {
+        'SUCCESS': 'success', 
+        'RUNNING': 'primary',
+        'FAILED': 'danger', 
+        'PENDING': 'info',
+    };
+    
+    const map = type === 'connection' ? connectionMap : executionMap;
+    return map[status] || 'light'; // 回傳 'light' 作為預設顏色
+};
 
   // 根據載入和錯誤狀態顯示不同的 UI
   if (loading) return (
@@ -76,13 +142,7 @@ export default function ConnectionList() {
     return <div className="alert alert-info">You currently have no connections.</div>;
   }
 
-  const getStatusBadge = (status: string) => {
-      const statusMap: { [key: string]: string } = {
-          'ACTIVE': 'bg-success', 'PENDING': 'bg-info text-dark',
-          'ERROR': 'bg-danger', 'DISABLED': 'bg-secondary'
-      };
-      return statusMap[status] || 'bg-light text-dark';
-  };
+  const colCount = 8;
 
   return (
     <div className="table-responsive">
@@ -91,17 +151,74 @@ export default function ConnectionList() {
           <tr>
             <th>Enabled</th><th>Display Name</th><th>Data Source</th>
             <th>Client</th><th>Status</th><th>Target Dataset</th><th>Last Updated</th>
+            <th className="text-center">History</th>
           </tr>
         </thead>
         <tbody>
           {connections.map((connection) => (
-            <tr key={connection.id} onClick={() => router.push(`/connections/${connection.id}`)} style={{ cursor: 'pointer' }}>
-              <td><span className={`badge ${connection.is_enabled ? 'bg-success' : 'bg-secondary'}`}>{connection.is_enabled ? 'ON' : 'OFF'}</span></td>
-              <td>{connection.display_name}</td><td>{connection.data_source.display_name}</td>
-              <td>{connection.client.name}</td><td><span className={`badge ${getStatusBadge(connection.status)}`}>{connection.status}</span></td>
-              <td>{connection.target_dataset_id}</td>
-              <td>{new Date(connection.updated_at).toLocaleString()}</td>
-            </tr>
+            <Fragment key={connection.id}>
+              <tr onClick={() => router.push(`/connections/${connection.id}`)} style={{ cursor: 'pointer' }}>
+                <td><Badge bg={connection.is_enabled ? 'success' : 'secondary'}>{connection.is_enabled ? 'ON' : 'OFF'}</Badge></td>
+                <td>{connection.display_name}</td><td>{connection.data_source.display_name}</td>
+                <td>{connection.client.name}</td><td><Badge bg={getStatusBadge(connection.status, 'connection')}>{connection.status}</Badge></td>
+                <td>{connection.target_dataset_id}</td>
+                <td>{new Date(connection.updated_at).toLocaleString()}</td>
+                <td className="text-center">
+                   <button 
+                     className="btn btn-sm btn-outline-secondary"
+                     onClick={(e) => handleToggleExpand(connection.id, e)}
+                     title={expandedConnectionId === connection.id ? "Collapse history" : "Expand history"}
+                   >
+                     {expandedConnectionId === connection.id ? <BsChevronUp /> : <BsChevronDown />}
+                   </button>
+                </td>
+              </tr>
+              
+              {/* --- ✨ 這裡是動態展開的內容 --- */}
+              {expandedConnectionId === connection.id && (
+                <tr className="connection-expansion-row">
+                  <td colSpan={colCount} className="p-3" style={{backgroundColor: '#f8f9fa'}}>
+                      {historyLoading && <div className="text-center"><Spinner animation="border" size="sm" /> Loading history...</div>}
+                      
+                      {historyError && <Alert variant="danger"><strong>Error:</strong> {historyError}</Alert>}
+
+                      {!historyLoading && !historyError && (
+                        history.length === 0 ? (
+                          <div className="text-center text-muted">No execution history found.</div>
+                        ) : (
+                          <table className="table table-sm table-bordered mb-0">
+                            <thead className="table-secondary">
+                              <tr>
+                                <th>Status</th><th>Started At</th><th>Finished At</th>
+                                <th>Executed By</th><th style={{width: '30%'}}>Message</th><th>Config</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {history.map(exec => (
+                                <tr key={exec.id}>
+                                  <td><Badge pill className="w-100" bg={getStatusBadge(exec.status, 'execution')}>{exec.status}</Badge></td>
+                                  <td>{new Date(exec.started_at).toLocaleString()}</td>
+                                  <td>{exec.finished_at ? new Date(exec.finished_at).toLocaleString() : 'N/A'}</td>
+                                  <td>{exec.triggered_by ? exec.triggered_by.username : <span className="text-muted">Scheduled Task</span>}</td>
+                                  <td style={{ wordBreak: 'break-word' }}>{exec.message || <span className="text-muted">-</span>}</td>
+                                  <td>
+                                    <details>
+                                      <summary style={{ cursor: 'pointer' }}>View</summary>
+                                      <pre className="bg-light p-2 rounded mt-1" style={{ maxHeight: '150px', overflowY: 'auto' }}>
+                                        {JSON.stringify(exec.config, null, 2)}
+                                      </pre>
+                                    </details>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )
+                      )}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

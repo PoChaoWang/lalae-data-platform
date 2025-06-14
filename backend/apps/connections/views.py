@@ -36,7 +36,7 @@ import json
 # from apps.clients.models import Client # Already imported below
 
 # App-specific imports
-from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution
+from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution, Client
 from django.db.models import Q
 from .forms import BaseConnectionForm, GoogleAdsForm, FacebookAdsForm, GoogleSheetForm
 from apps.clients.models import Client  # Assuming this path is correct
@@ -61,17 +61,15 @@ from .apis.google_sheet import GoogleSheetAPIClient
 from .tasks import sync_connection_data_task
 from itertools import chain
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from .models import GoogleAdsField
 from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
 from allauth.socialaccount.models import SocialToken
-from .models import Client 
 
-from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer
+from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer, ConnectionExecutionSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +189,29 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             {"status": f"Sync task for '{connection.display_name}' has been triggered."},
             status=status.HTTP_200_OK
         )
+    
+    @action(detail=True, methods=['get'], url_path='executions')
+    def executions(self, request, pk=None):
+        """
+        返回指定 Connection 的所有執行紀錄 (更健壯的版本)
+        """
+        try:
+            connection = self.get_object()
+            execution_queryset = ConnectionExecution.objects.filter(connection=connection).order_by('-started_at')
+            
+            serializer = ConnectionExecutionSerializer(execution_queryset, many=True)
+            
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except Connection.DoesNotExist:
+            return Response({"error": "Connection not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            # 捕捉任何其他潛在錯誤，並返回 500 錯誤及訊息
+            logger.error(f"Error fetching executions for connection {pk}: {e}", exc_info=True) 
+            return Response(
+                {"error": "An internal server error occurred while fetching execution history."}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 @api_view(['GET'])
 @permission_classes([AllowAny])
@@ -1060,6 +1081,8 @@ def save_oauth_redirect(request): # Used by _base.html JS
 def facebook_oauth_callback(request):
     code = request.GET.get('code')
     state_param = request.GET.get('state') # This should be the client_id we passed
+
+    redirect_path = request.session.pop('final_redirect_after_oauth_link', '/')
     
     # Retrieve client_id from state or session (state is more reliable for CSRF protection)
     client_id_from_state = state_param
@@ -1139,21 +1162,9 @@ def facebook_oauth_callback(request):
 
         messages.success(request, f"Facebook account '{user_info.get('name', user_info['id'])}' successfully authorized and linked to client {client.name}.")
         
-        # Redirect in the Backend
-        # base_url = reverse('connections:connection_create', kwargs={
-        #     'source_name': 'FACEBOOK_ADS',
-        #     'client_id': client_id
-        # })
-        # dataset_id = request.session.get('selected_dataset_id')
-        # if dataset_id:
-        #     final_url = f"{base_url}?dataset_id={dataset_id}"
-        # else:
-        #     final_url = base_url
-            
-        # return redirect(final_url)
-
-        final_redirect_url = 'http://localhost:3000/auth/callback'
-        logger.info(f"Redirecting to fixed frontend callback page: {final_redirect_url}")
+        final_redirect_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}{redirect_path}"
+        
+        logger.info(f"Facebook OAuth success. Redirecting to dynamic frontend URL: {final_redirect_url}")
         return redirect(final_redirect_url)
 
     except requests.exceptions.HTTPError as e:

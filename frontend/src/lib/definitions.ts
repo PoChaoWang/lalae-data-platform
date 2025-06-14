@@ -78,3 +78,19 @@ export type FormState = {
   schema: SchemaColumn[];
   date_column: string | null;
 };
+
+export interface TriggeredBy {
+  id: number;
+  username: string;
+  email: string;
+}
+
+export interface ConnectionExecution {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: 'SUCCESS' | 'RUNNING' | 'FAILED' | 'PENDING';
+  message: string;
+  config: any; // 可以是一個 JSON 物件
+  triggered_by: TriggeredBy | null; // 可能為 null，代表系統觸發 (Celery Beat)
+}

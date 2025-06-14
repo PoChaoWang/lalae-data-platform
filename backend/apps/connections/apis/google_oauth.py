@@ -19,11 +19,11 @@ from google.oauth2.credentials import Credentials
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
 import json
-
+from django.utils.timezone import make_aware 
 from google.cloud import bigquery
 import pandas as pd
 from ..models import Connection
-
+from google.auth.transport.requests import Request
 # Relative import for models within the same app 'connections'
 from ..models import (
     Connection,
@@ -105,9 +105,6 @@ def _refresh_user_social_token(social_token, request=None):
 
         logger.info(f"Refreshing token for user {social_token.account.user.id}")
 
-        # 使用refresh token獲取新的access token
-        from google.auth.transport.requests import Request
-
         credentials = Credentials(
             token=social_token.token,
             refresh_token=social_token.token_secret,
@@ -122,8 +119,10 @@ def _refresh_user_social_token(social_token, request=None):
         # 更新存儲的token
         social_token.token = credentials.token
         if credentials.expiry:
-            social_token.expires_at = credentials.expiry
-        social_token.save()
+            aware_datetime = make_aware(credentials.expiry)
+            social_token.expires_at = aware_datetime
+            
+        social_token.save(update_fields=['token', 'expires_at'])
 
         logger.info(
             f"Token refreshed successfully for user {social_token.account.user.id}"

@@ -4,11 +4,12 @@ from rest_framework import serializers
 from django.conf import settings
 import logging
 
-from .models import Connection, DataSource
+from .models import Connection, DataSource, ConnectionExecution
 from apps.clients.models import Client
 from allauth.socialaccount.models import SocialToken, SocialAccount
+from django.utils import timezone
+from django.contrib.auth import get_user_model
 
-# 匯入您用於驗證的 API 客戶端
 from .apis.google_sheet import GoogleSheetAPIClient
 from .apis.facebook_ads import FacebookAdsAPIClient
 from .apis.google_oauth import _refresh_user_social_token
@@ -132,15 +133,27 @@ class ConnectionSerializer(serializers.ModelSerializer):
             client_id = data.get('client_id')
             data_source_id = data.get('data_source_id')
 
+            logger.info(f"====== Starting validation for NEW connection ======")
+            logger.info(f"Received client_id from frontend: {client_id}")
+            logger.info(f"Received data_source_id from frontend: {data_source_id}")
+
             if not client_id or not data_source_id:
                 raise serializers.ValidationError("client_id and data_source_id are required for creating a new connection.")
 
             try:
                 client = Client.objects.get(id=client_id)
                 data_source = DataSource.objects.get(id=data_source_id)
+
+                logger.info(f"Successfully fetched Client from DB: '{client.name}' (ID: {client.id})")
+                logger.info(f"Client's linked Google Social Account in DB: {client.google_social_account}")
+
+
             except (Client.DoesNotExist, DataSource.DoesNotExist) as e:
+
+                logger.error(f"Could not find Client or DataSource in DB. Error: {e}")
+
                 raise serializers.ValidationError(str(e))
-        else: # 如果是更新，則從現有的 instance 獲取 client 和 data_source
+        else: 
             client = self.instance.client
             data_source = self.instance.data_source
 
@@ -179,11 +192,30 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 logger.info("Facebook API connection test PASSED.")
 
             elif data_source.name == "GOOGLE_ADS":
-                if not client.is_oauth_authorized():
-                    raise serializers.ValidationError("Google account is not authorized for this client.")
+                logger.info(f"Re-fetching client '{client.name}' to ensure data is fresh before API validation.")
+                client = Client.objects.get(id=client.id)
+                logger.info(f"Fresh client object's Google Social Account is: {client.google_social_account}")
+
+                if not client.google_social_account:
+                    # 為了保險起見，我們仍然可以保留一個對 social_account 的直接檢查
+                    raise serializers.ValidationError("The client object is not linked to any Google Social Account.")
                 
-                social_token = SocialToken.objects.get(account=client.google_social_account)
+                try:
+                    social_token = SocialToken.objects.get(account=client.google_social_account)
+                    logger.info("Found associated SocialToken successfully.")
+                except SocialToken.DoesNotExist:
+                    logger.error(f"VALIDATION FAILED for client '{client.name}': SocialAccount is linked, but SocialToken is missing!")
+                    raise serializers.ValidationError("Authorization token not found for the linked Google account. Please re-authorize.")
+        
                 _refresh_user_social_token(social_token)
+
+                if social_token.expires_at and social_token.expires_at < timezone.now():
+                    logger.warning(f"Token for user {social_token.account.user.id} has expired. Attempting to refresh.")
+                    try:
+                        _refresh_user_social_token(social_token)
+                    except Exception as e:
+                        logger.error(f"The _refresh_user_social_token function failed: {e}", exc_info=True)
+                        raise serializers.ValidationError("Failed to refresh the expired Google authorization. Please re-authorize manually.")
                 
                 google_ads_config = {
                     "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
@@ -201,8 +233,26 @@ class ConnectionSerializer(serializers.ModelSerializer):
         except (SocialToken.DoesNotExist, GoogleAdsException) as e:
             logger.error(f"API validation failed for {data_source.name}: {e}", exc_info=True)
             raise serializers.ValidationError(f"API Connection Test Failed for {data_source.name}. Please check credentials and permissions. Details: {e}")
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"Unexpected API validation error for {data_source.name}: {e}", exc_info=True)
             raise serializers.ValidationError(f"An unexpected error occurred during API validation: {e}")
 
         return data
+
+class TriggeredBySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = get_user_model()
+        fields = ['id', 'username', 'email']
+
+class ConnectionExecutionSerializer(serializers.ModelSerializer):
+    triggered_by = TriggeredBySerializer(read_only=True)
+    config = serializers.JSONField(source='config_snapshot', read_only=True)
+
+    class Meta:
+        model = ConnectionExecution
+        fields = [
+            'id', 'started_at', 'finished_at', 'status',
+            'message', 'config', 'triggered_by'
+        ]

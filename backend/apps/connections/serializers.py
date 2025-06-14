@@ -126,17 +126,30 @@ class ConnectionSerializer(serializers.ModelSerializer):
         return last_execution.started_at if last_execution else None
 
     def validate(self, data):
-        """
-        這是進行複雜、跨欄位驗證的地方。
-        我們將舊 form_valid 中的 API 連線測試邏輯移到這裡。
-        """
-        client_id = data.get('client_id')
-        data_source_id = data.get('data_source_id')
-        config = data.get('config', {})
+        is_creating = self.instance is None
 
-        client = Client.objects.get(id=client_id)
-        data_source = DataSource.objects.get(id=data_source_id)
+        if is_creating:
+            client_id = data.get('client_id')
+            data_source_id = data.get('data_source_id')
 
+            if not client_id or not data_source_id:
+                raise serializers.ValidationError("client_id and data_source_id are required for creating a new connection.")
+
+            try:
+                client = Client.objects.get(id=client_id)
+                data_source = DataSource.objects.get(id=data_source_id)
+            except (Client.DoesNotExist, DataSource.DoesNotExist) as e:
+                raise serializers.ValidationError(str(e))
+        else: # 如果是更新，則從現有的 instance 獲取 client 和 data_source
+            client = self.instance.client
+            data_source = self.instance.data_source
+
+        should_run_api_test = is_creating or 'config' in data
+
+        if not should_run_api_test:
+            return data
+
+        config = data.get('config', self.instance.config if self.instance else {})
         logger.info(f"Running validation for source: {data_source.name}")
 
         try:

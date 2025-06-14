@@ -124,12 +124,6 @@ export default function ConnectionDetailPage() {
     }
   };
   
-  const handleDelete = async () => {
-    if (window.confirm('Are you sure you want to delete this connection? This action cannot be undone.')) {
-        // 這裡需要實作 DELETE 請求
-        alert('Delete functionality to be implemented.');
-    }
-  };
 
   if (loading) return <div className="container my-4">Loading...</div>;
   if (error) return <div className="container my-4 alert alert-danger">{error}</div>;

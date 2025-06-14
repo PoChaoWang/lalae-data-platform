@@ -67,8 +67,8 @@ export default function AppNavbar() {
                             </>
                         ) : (
                             <>
-                                <Nav.Link href="http://localhost:8000/users/login/">Login</Nav.Link>
-                                <Nav.Link href="http://localhost:8000/users/register/">Register</Nav.Link>
+                                <Nav.Link href="https://98dd-114-24-81-73.ngrok-free.app/users/login/">Login</Nav.Link>
+                                <Nav.Link href="https://98dd-114-24-81-73.ngrok-free.app/users/register/">Register</Nav.Link>
                             </>
                         )}
                         

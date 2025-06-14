@@ -5,7 +5,7 @@ from . import views
 
 app_name = 'users'
 
-NEXTJS_APP_URL = 'http://localhost:3000'
+NEXTJS_APP_URL = 'https://30e1-114-24-81-73.ngrok-free.app'
 
 urlpatterns = [
     path('register/', views.register, name='register'),

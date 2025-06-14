@@ -43,4 +43,4 @@ def logout_view(request):
     """
     logout(request) # 執行登出操作
     # 成功後，將使用者重導向回 Next.js 的首頁
-    return redirect('http://localhost:3000')
+    return redirect('https://30e1-114-24-81-73.ngrok-free.app')

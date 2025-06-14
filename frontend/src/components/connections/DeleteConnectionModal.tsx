@@ -7,18 +7,41 @@ import { useState } from 'react';
 // const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 
-export default function DeleteConnectionModal({ isOpen, onClose, connectionId, connectionName }: { isOpen: boolean; onClose: () => void; connectionId: number; connectionName: string; }) {
+export default function DeleteConnectionModal({ isOpen, onClose, connectionId, connectionName, csrfToken }: { isOpen: boolean; onClose: () => void; connectionId: number; connectionName: string; csrfToken: string | null;}) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
     setIsDeleting(true);
-    // ✨ 修正：使用正確的完整路徑
-    await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/`, { method: 'DELETE' });
-    setIsDeleting(false);
-    onClose();
-    router.push('/connections');
-    router.refresh();
+    if (!csrfToken) {
+      alert('Security token is missing. Cannot delete.');
+      setIsDeleting(false);
+      return;
+    }
+
+    try {
+      console.log('Deleting with CSRF Token:', csrfToken);
+      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/`, {
+          method: 'DELETE',
+          headers: {
+              'X-CSRFToken': csrfToken || '',
+          },
+          credentials: 'include',
+      });
+
+      if (res.ok || res.status === 204) { // 204 No Content 也算成功
+          onClose();
+          router.push('/connections');
+          router.refresh();
+      } else {
+          throw new Error('Failed to delete the connection.');
+      }
+    } catch (error) {
+        console.error(error);
+        alert('An error occurred while deleting.');
+    } finally {
+        setIsDeleting(false);
+    }
   };
 
   if (!isOpen) return null;

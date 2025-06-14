@@ -67,3 +67,14 @@ export type Connection = {
   config: any; // 在真實應用中可以為不同的 config 定義更精確的型別
 };
 
+export type SchemaColumn = {
+  name: string;
+  type: string;
+};
+
+export type FormState = {
+  sheet_id: string;
+  tab_name: string;
+  schema: SchemaColumn[];
+  date_column: string | null;
+};

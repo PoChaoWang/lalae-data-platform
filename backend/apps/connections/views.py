@@ -19,6 +19,8 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.views import View
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.middleware.csrf import get_token
 import facebook
 import requests # Add this for Facebook OAuth token exchange
 from allauth.socialaccount.models import SocialApp
@@ -59,7 +61,8 @@ from .apis.google_sheet import GoogleSheetAPIClient
 from .tasks import sync_connection_data_task
 from itertools import chain
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -188,6 +191,13 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             {"status": f"Sync task for '{connection.display_name}' has been triggered."},
             status=status.HTTP_200_OK
         )
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def get_csrf_token(request):
+    token = get_token(request)
+    return JsonResponse({'csrfToken': token})
 
 @api_view(['GET'])
 def get_google_ads_resources_api(request):

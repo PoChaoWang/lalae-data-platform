@@ -14,6 +14,7 @@ app_name = "connections"  # 為 URL 名稱加上命名空間，方便在模板�
 
 urlpatterns = [
     # For Frontend
+    path("api/get-csrf-token/", views.get_csrf_token, name="api_get_csrf_token"),
     path("api/", include(router.urls)),
     path("api/google-ads-resources/", views.get_google_ads_resources_api, name="api_get_google_ads_resources"),
     path("api/facebook-ad-accounts/", views.get_facebook_ad_accounts_api, name="api_get_facebook_ad_accounts"),

@@ -7,7 +7,7 @@ import SelectClientStep from '@/components/connections/SelectClientStep';
 import SelectDataSourceStep from '@/components/connections/SelectDataSourceStep';
 import ConnectionForm from '@/components/connections/ConnectionForm';
 import Link from 'next/link';
-import type { SelectableClient, DataSource } from '@/lib/definitions'; // ✨ 修正：從 definitions 匯入
+import { SelectableClient, DataSource, Connection } from '@/lib/definitions'; 
 import ProtectedComponent from '@/components/ProtectedComponent'; 
 
 // Pleae change the URL in the env.local file if you need
@@ -18,60 +18,85 @@ export default function NewConnectionPage() {
 
   const router = useRouter();
   const searchParams = useSearchParams();
-
   const [step, setStep] = useState(1);
   const [selectedClient, setSelectedClient] = useState<SelectableClient | null>(null);
   const [selectedDataSource, setSelectedDataSource] = useState<DataSource | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [initialDataForForm, setInitialDataForForm] = useState<{
+    displayName: string;
+    config: any;
+  } | null>(null);
+
   useEffect(() => {
-
-
-    const restoreStateFromURL = async () => {
+    const initializePage = async () => {
       setIsLoading(true);
+      const cloneId = searchParams.get('cloneFrom');
       const stepParam = searchParams.get('step');
       const clientId = searchParams.get('client_id');
       const dataSourceName = searchParams.get('data_source_name');
 
-      
       try {
-        if (clientId) {
-            const clientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/${clientId}/`, { 
+        if (cloneId) {
+          // --- 處理複製邏輯 (最高優先級) ---
+          const connRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${cloneId}/`, { credentials: 'include' });
+          if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
+          const clonedConnectionData: Connection = await connRes.json();
+
+          const fullClientId = clonedConnectionData.client.id;
+
+          const fullClientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/${fullClientId}/`, { 
+            credentials: 'include',
+            cache: 'no-store' 
+          });
+          if (!fullClientRes.ok) throw new Error('Failed to fetch full client details.');
+          const fullClientData: SelectableClient = await fullClientRes.json();
+          
+          setSelectedClient(fullClientData); 
+          setSelectedDataSource(clonedConnectionData.data_source);
+          setInitialDataForForm({
+            displayName: `${clonedConnectionData.display_name} (Copy)`,
+            config: clonedConnectionData.config
+          });
+          setStep(3); // 直接跳到第三步
+
+        } else if (clientId) {
+          // --- 處理正常的分步流程 ---
+          const clientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/${clientId}/`, { 
+              credentials: 'include',
+              cache: 'no-store'
+          });
+          if (!clientRes.ok) throw new Error('Failed to fetch client data.');
+          const clientData: SelectableClient = await clientRes.json();
+          setSelectedClient(clientData); 
+
+          if (stepParam === '3' && dataSourceName) {
+            const dataSourceRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/datasources/${dataSourceName}/`, {
                 credentials: 'include',
-                cache: 'no-store' // 確保獲取最新資料
+                cache: 'no-store'
             });
-
-            if (!clientRes.ok) throw new Error('Failed to fetch client data.');
-            
-            const clientData: SelectableClient = await clientRes.json();
-            setSelectedClient(clientData); 
-
-            if (stepParam === '3' && dataSourceName) {
-              const dataSourceRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/datasources/${dataSourceName}/`, {
-                  credentials: 'include',
-                  cache: 'no-store'
-              });
-              if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');
-              const dataSourceData: DataSource = await dataSourceRes.json();
-              setSelectedDataSource(dataSourceData); // ✨ 使用從 API 獲取的真實物件
-              setStep(3);
+            if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');
+            const dataSourceData: DataSource = await dataSourceRes.json();
+            setSelectedDataSource(dataSourceData);
+            setStep(3);
           } else if (stepParam === '2') {
-              setStep(2);
+            setStep(2);
           } else {
-              setStep(1);
+            setStep(1);
           }
-      } else {
-          setStep(1); // 如果沒有任何參數，回到第一步
+        } else {
+          // --- 預設情況 ---
+          setStep(1);
+        }
+      } catch (error) {
+          console.error("Failed to initialize page:", error);
+          router.replace('/connections/new'); // 如果出錯，重置到第一步
+      } finally {
+          setIsLoading(false);
       }
-    } catch (error) {
-        console.error("Failed to restore state from URL:", error);
-        router.replace('/connections/new'); 
-    } finally {
-        setIsLoading(false);
-    }
-  };
+    };
 
-    restoreStateFromURL();
+    initializePage();
   }, [searchParams, router]);
 
   const handleClientSelect = (client: SelectableClient) => {

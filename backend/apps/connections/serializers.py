@@ -14,7 +14,7 @@ from .apis.facebook_ads import FacebookAdsAPIClient
 from .apis.google_oauth import _refresh_user_social_token
 from google.ads.googleads.client import GoogleAdsClient
 from google.ads.googleads.errors import GoogleAdsException
-
+from apps.clients.models import Client as ClientModel
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,42 @@ class ConnectionSerializer(serializers.ModelSerializer):
             'last_execution_time',
         ]
         read_only_fields = ['status', 'created_at', 'updated_at']
+    
+    def create(self, validated_data):
+        """
+        覆寫 create 方法，以處理 client_id 和 data_source_id，
+        並在建立 Connection 時關聯 SocialAccount。
+        """
+        client_id = validated_data.pop('client_id')
+        data_source_id = validated_data.pop('data_source_id')
+        
+        try:
+            client = ClientModel.objects.get(id=client_id)
+            data_source = DataSource.objects.get(id=data_source_id)
+        except (ClientModel.DoesNotExist, DataSource.DoesNotExist) as e:
+            raise serializers.ValidationError(str(e))
+
+        # ✨ 解決問題的核心邏輯 ✨
+        connection = Connection.objects.create(
+            client=client,
+            data_source=data_source,
+            **validated_data
+        )
+
+        # 根據資料源，將 Client 上的 social_account 賦值給 Connection
+        if data_source.name == 'GOOGLE_ADS':
+            if not client.google_social_account:
+                # 在此處做一個防禦性檢查
+                raise serializers.ValidationError("The selected client is not authorized with a Google account.")
+            connection.social_account = client.google_social_account
+        elif data_source.name == 'FACEBOOK_ADS':
+            if not client.facebook_social_account:
+                raise serializers.ValidationError("The selected client is not authorized with a Facebook account.")
+            connection.social_account = client.facebook_social_account
+        
+        connection.save() # 儲存 social_account 的關聯
+        
+        return connection
 
     def get_last_execution_status(self, obj):
         last_execution = obj.executions.order_by('-started_at').first()
@@ -157,17 +193,3 @@ class ConnectionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"An unexpected error occurred during API validation: {e}")
 
         return data
-
-    def create(self, validated_data):
-        client_id = validated_data.pop('client_id')
-        data_source_id = validated_data.pop('data_source_id')
-
-        client_instance = Client.objects.get(id=client_id)
-        data_source_instance = DataSource.objects.get(id=data_source_id)
-
-        connection = Connection.objects.create(
-            client=client_instance,
-            data_source=data_source_instance,
-            **validated_data
-        )
-        return connection

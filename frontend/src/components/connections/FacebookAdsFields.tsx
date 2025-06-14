@@ -1,6 +1,6 @@
 // /components/connections/FacebookAdsFields.tsx
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SelectableClient } from '@/lib/definitions';
 
 // Pleae change the URL in the env.local file if you need
@@ -36,35 +36,51 @@ async function getAllFacebookFields(): Promise<AllFBFields> {
     }
 }
 
-export default function FacebookAdsFields({ onConfigChange, client }: { onConfigChange: (config: object) => void, client: SelectableClient }) {
+export default function FacebookAdsFields({ onConfigChange, client, initialConfig }: { onConfigChange: (config: object) => void, client: SelectableClient, initialConfig?: any }) {
     const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
     const [allFields, setAllFields] = useState<AllFBFields | null>(null);
-    const [formState, setFormState] = useState({
-        facebook_ad_account_id: '',
-        insights_level: 'campaign',
-        selected_fields: new Set<string>(),
-        selected_breakdowns: new Set<string>(),
-        selected_action_breakdowns: new Set<string>(),
-    });
-    
+    const [formState, setFormState] = useState(() => ({
+        facebook_ad_account_id: initialConfig?.facebook_ad_account_id || '',
+        insights_level: initialConfig?.insights_level || 'campaign',
+        selected_fields: new Set<string>(initialConfig?.selected_fields || []),
+        selected_breakdowns: new Set<string>(initialConfig?.selected_breakdowns || []),
+        selected_action_breakdowns: new Set<string>(initialConfig?.selected_action_breakdowns || []),
+    }));
+
+    const onConfigChangeRef = useRef(onConfigChange);
+    useEffect(() => {
+        onConfigChangeRef.current = onConfigChange;
+    }, [onConfigChange]);
+
     useEffect(() => {
         getAdAccounts(client.id).then(setAdAccounts);
-        getAllFacebookFields().then(data => {
-            // *** 加入這個 Log ***
-            console.log("從 API 收到的 Fields 資料:", data); 
-            setAllFields(data);
-        });
+        getAllFacebookFields().then(setAllFields);
     }, [client.id]);
 
     useEffect(() => {
-        onConfigChange({
+        // 只有在複製資料存在，且廣告帳戶列表也載入完成後，才進行設定
+        if (initialConfig && adAccounts.length > 0) {
+            setFormState({
+                facebook_ad_account_id: initialConfig.facebook_ad_account_id || '',
+                insights_level: initialConfig.insights_level || 'campaign',
+                selected_fields: new Set<string>(initialConfig.selected_fields || []),
+                selected_breakdowns: new Set<string>(initialConfig.selected_breakdowns || []),
+                // 注意：這裡的 key 可能是 action_breakdowns
+                selected_action_breakdowns: new Set<string>(initialConfig.action_breakdowns || initialConfig.selected_action_breakdowns || []),
+            });
+        }
+    }, [JSON.stringify(initialConfig), adAccounts]);
+
+    useEffect(() => {
+        // 使用 ref 來呼叫，避免 onConfigChange 本身被加入依賴項
+        onConfigChangeRef.current({
             facebook_ad_account_id: formState.facebook_ad_account_id,
             insights_level: formState.insights_level,
             selected_fields: Array.from(formState.selected_fields),
             selected_breakdowns: Array.from(formState.selected_breakdowns),
             selected_action_breakdowns: Array.from(formState.selected_action_breakdowns),
         });
-    }, [formState, onConfigChange]);
+    }, [formState]); 
 
     const handleLevelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
         setFormState(prev => ({
@@ -88,10 +104,6 @@ export default function FacebookAdsFields({ onConfigChange, client }: { onConfig
     
     const levelKey = formState.insights_level === 'adset' ? 'ad_set' : formState.insights_level;
     const availableFields = allFields ? allFields[levelKey] : null;
-
-    console.log("目前的 allFields:", allFields);
-    console.log("目前的 levelKey:", levelKey);
-    console.log("計算出的 availableFields:", availableFields);
 
     return (
         <>

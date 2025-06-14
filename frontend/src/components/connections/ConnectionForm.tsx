@@ -7,6 +7,8 @@ import GoogleAdsFields from './GoogleAdsFields';
 import FacebookAdsFields from './FacebookAdsFields';
 import GoogleSheetFields from './GoogleSheetFields';
 import type { SelectableClient, DataSource } from '@/lib/definitions';
+import { getCookie } from '@/lib/utils';
+
 
 // Pleae change the URL in the env.local file if you need
 // const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
@@ -20,20 +22,83 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [authIdentifier, setAuthIdentifier] = useState<string>('');
   
-  const [formData, setFormData] = useState({
-    display_name: '',
-    target_dataset_id: client.bigquery_dataset_id || '',
-    sync_frequency: 'daily',
-    sync_hour: '00',
-    sync_minute: '00',
-    weekly_day_of_week: '1',
-    monthly_day_of_month: 1,
-    config: {},
+  const [formData, setFormData] = useState(() => {
+    // 嘗試從 URL 參數中解析資料
+    const clonedConfigString = searchParams.get('config');
+    const clonedConfig = clonedConfigString ? JSON.parse(clonedConfigString) : {};
+
+    const displayName = searchParams.get('display_name') || '';
+
+    return {
+      display_name: displayName,
+      target_dataset_id: client.bigquery_dataset_id || '',
+      sync_frequency: clonedConfig.sync_frequency || 'daily',
+      sync_hour: clonedConfig.sync_hour || '00',
+      sync_minute: clonedConfig.sync_minute || '00',
+      weekly_day_of_week: clonedConfig.weekly_day_of_week || '1',
+      monthly_day_of_month: clonedConfig.monthly_day_of_month || 1,
+      config: clonedConfig, 
+    };
   });
+
+  useEffect(() => {
+    const cloneFromId = searchParams.get('cloneFrom');
+    if (cloneFromId) {
+      const fetchConnectionToClone = async (id: string) => {
+        try {
+          const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${id}/`, {
+            credentials: 'include',
+          });
+          if (!res.ok) {
+            throw new Error(`Failed to fetch connection data (ID: ${id}) for cloning.`);
+          }
+          const connectionToClone = await res.json();
+
+          // 使用獲取到的資料來設定表單的初始值
+          setFormData(prev => ({
+            ...prev,
+            display_name: `${connectionToClone.display_name} (Copy)`,
+            // Sync schedule
+            sync_frequency: connectionToClone.config.sync_frequency || 'daily',
+            sync_hour: connectionToClone.config.sync_hour || '00',
+            sync_minute: connectionToClone.config.sync_minute || '00',
+            weekly_day_of_week: connectionToClone.config.weekly_day_of_week || '1',
+            monthly_day_of_month: connectionToClone.config.monthly_day_of_month || 1,
+            // 最重要的部分：將獲取到的 config 設定到 state 中
+            config: connectionToClone.config || {},
+          }));
+
+        } catch (err: any) {
+          console.error(err);
+          setError(`Could not load data for cloning: ${err.message}`);
+        }
+      };
+      fetchConnectionToClone(cloneFromId);
+    }
+  }, [searchParams]); 
+
+  useEffect(() => {
+    const fetchCsrfToken = async () => {
+      try {
+        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/get-csrf-token/`, {
+          credentials: 'include', // 確保 sessionid cookie 被發送，Django 才能生成對應的 CSRF token
+        });
+        if (!res.ok) throw new Error('Failed to fetch CSRF token');
+        const data = await res.json();
+        setCsrfToken(data.csrfToken); // 將 token 存入 state
+      } catch (e) {
+        console.error("Could not fetch CSRF token:", e);
+        setError("Could not initialize security token. Please refresh the page.");
+      }
+    };
+
+    fetchCsrfToken();
+  }, []);
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -85,8 +150,11 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   // ✨ 使用 useCallback 將此函式實例固定下來，除非依賴項改變
   // 這是解決方案的核心
   const handleConfigChange = useCallback((configUpdate: object) => {
-    setFormData(prev => ({ ...prev, config: { ...prev.config, ...configUpdate } }));
-  }, []); // 空依賴陣列確保函式永不改變
+    setFormData(prev => ({ 
+      ...prev, 
+      config: { ...prev.config, ...configUpdate } 
+  }));
+}, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,6 +166,17 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
       window.scrollTo(0, 0);
       return;
     }
+
+    if (!csrfToken) {
+      setError("Security token is missing. Cannot submit the form.");
+      setIsSubmitting(false);
+      return;
+    }
+    
+    const headers = new Headers({
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken // 使用 state 中的 token
+    });
     
     const payload = {
         display_name: formData.display_name,
@@ -114,16 +193,32 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
         }
     };
 
+    // const csrfToken = getCookie('csrftoken'); 
+    // console.log('CSRF Token from cookie:', csrfToken);
+    // const headers = new Headers({
+    //     'Content-Type': 'application/json'
+    // });
+    // if (csrfToken) {
+    //     headers.append('X-CSRFToken', csrfToken); // 2. 將 Token 加入 Header
+    // } else {
+    //     setError("CSRF token not found. Please ensure you are logged in and cookies are enabled.");
+    //     setIsSubmitting(false);
+    //     return;
+    // }
+
     try {
       const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(payload),
         credentials: 'include',
       });
 
       if (!res.ok) {
         const errorData = await res.json();
+        if (res.status === 403) {
+             throw new Error('CSRF Verification Failed. Please refresh the page and try again.');
+        }
         const errorMessages = Object.entries(errorData).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('; ');
         throw new Error(errorMessages || 'Failed to create connection');
       }
@@ -132,6 +227,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
       router.push(`/connections/${newConnection.id}`);
     } catch (err: any) {
       setError(err.message);
+      window.scrollTo(0, 0);
     } finally {
       setIsSubmitting(false);
     }
@@ -212,9 +308,9 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
                             <div className="form-text">This is the dataset where your data will be stored.</div>
                         </div>
                         
-                        {dataSource.name === 'GOOGLE_ADS' && <GoogleAdsFields onConfigChange={handleConfigChange} client={client} />}
-                        {dataSource.name === 'FACEBOOK_ADS' && <FacebookAdsFields onConfigChange={handleConfigChange} client={client} />}
-                        {dataSource.name === 'GOOGLE_SHEET' && <GoogleSheetFields onConfigChange={handleConfigChange} />}
+                        {dataSource.name === 'GOOGLE_ADS' && <GoogleAdsFields onConfigChange={handleConfigChange} client={client}  initialConfig={formData.config}/>}
+                        {dataSource.name === 'FACEBOOK_ADS' && <FacebookAdsFields onConfigChange={handleConfigChange} client={client}  initialConfig={formData.config}/>}
+                        {dataSource.name === 'GOOGLE_SHEET' && <GoogleSheetFields onConfigChange={handleConfigChange} initialConfig={formData.config} />}
                         
                         <hr className="my-4" />
                         

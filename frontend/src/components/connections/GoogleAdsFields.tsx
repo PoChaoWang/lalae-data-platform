@@ -1,7 +1,7 @@
 // /components/connections/GoogleAdsFields.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { SelectableClient } from '@/lib/definitions';
 
 // Pleae change the URL in the env.local file if you need
@@ -11,6 +11,12 @@ const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 type Field = { name: string; display: string };
 type AvailableFields = { metrics: Field[]; segments: Field[]; attributes: Field[] };
 
+async function fetchResources(): Promise<Field[]> {
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/google-ads-resources/`, { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to fetch resources');
+    return res.json();
+}
+
 async function fetchCompatibleFields(resourceName: string): Promise<AvailableFields> {
     const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/get-compatible-google-ads-fields/?resource=${resourceName}`, {
         credentials: 'include',
@@ -19,13 +25,8 @@ async function fetchCompatibleFields(resourceName: string): Promise<AvailableFie
     return res.json();
 }
 
-async function fetchResources(): Promise<Field[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/google-ads-resources/`, { credentials: 'include' });
-    if (!res.ok) throw new Error('Failed to fetch resources');
-    return res.json();
-}
-
-export default function GoogleAdsFields({ onConfigChange, client }: { onConfigChange: (config: object) => void, client: SelectableClient }) {
+export default function GoogleAdsFields({ onConfigChange, client, initialConfig }: { onConfigChange: (config: object) => void, client: SelectableClient, initialConfig: any }) {
+    // === State Declarations ===
     const [customerId, setCustomerId] = useState('');
     const [resources, setResources] = useState<Field[]>([]);
     const [selectedResource, setSelectedResource] = useState('');
@@ -34,39 +35,77 @@ export default function GoogleAdsFields({ onConfigChange, client }: { onConfigCh
     const [selectedFields, setSelectedFields] = useState<Set<string>>(new Set());
     const [loadingFields, setLoadingFields] = useState(false);
     
-    // ✨ 使用 React State 控制 Accordion 的展開狀態
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-    
+    const prevResourceRef = useRef<string | undefined>(undefined);
+
     useEffect(() => {
-        fetchResources().then(setResources).catch(console.error);
+        fetchResources().then(setResources).catch(error => {
+            console.error("Error fetching resources list:", error);
+            // 可以在此設定錯誤狀態，通知使用者列表載入失敗
+        });
     }, []);
 
     useEffect(() => {
+        if (initialConfig) {
+            setCustomerId(initialConfig.customer_id || '');
+            setSelectedResource(initialConfig.resource_name || '');
+            const allFields = new Set<string>([
+                ...(initialConfig.metrics || []),
+                ...(initialConfig.segments || []),
+                ...(initialConfig.attributes || [])
+            ]);
+            setSelectedFields(allFields);
+
+            if (resources.length > 0) {
+                setSelectedResource(initialConfig.resource_name || '');
+            }
+        }
+    }, [JSON.stringify(initialConfig), resources]);
+
+    useEffect(() => {
+        const isManualChange = prevResourceRef.current !== undefined && prevResourceRef.current !== selectedResource;
+
+        // 更新 ref 以供下次比較
+        prevResourceRef.current = selectedResource;
+
         if (!selectedResource) {
             setAvailableFields(null);
-            setSelectedFields(new Set());
-            setExpandedCategories(new Set()); // 當資源改變時，重設展開狀態
             return;
         }
+
         setLoadingFields(true);
-        setSelectedFields(new Set());
-        setExpandedCategories(new Set()); // 當資源改變時，重設展開狀態
         fetchCompatibleFields(selectedResource)
-            .then(setAvailableFields)
+            .then(data => {
+                setAvailableFields(data);
+                // 只有在手動切換時，才清空不相容的欄位
+                if (isManualChange) {
+                    setSelectedFields(prevSelected => {
+                        const newSelected = new Set<string>();
+                        const allAvailableFieldNames = new Set([...data.metrics.map(f => f.name), ...data.segments.map(f => f.name), ...data.attributes.map(f => f.name)]);
+                        prevSelected.forEach(field => {
+                            if (allAvailableFieldNames.has(field)) newSelected.add(field);
+                        });
+                        return newSelected;
+                    });
+                }
+            })
             .catch(console.error)
             .finally(() => setLoadingFields(false));
     }, [selectedResource]);
 
+    // Hook 4: 將使用者變更的最終 config 通知父元件
     useEffect(() => {
         const metrics: string[] = [];
         const segments: string[] = [];
         const attributes: string[] = [];
 
-        selectedFields.forEach(fieldName => {
-            if (availableFields?.metrics.some(f => f.name === fieldName)) metrics.push(fieldName);
-            else if (availableFields?.segments.some(f => f.name === fieldName)) segments.push(fieldName);
-            else if (availableFields?.attributes.some(f => f.name === fieldName)) attributes.push(fieldName);
-        });
+        if (availableFields) {
+            selectedFields.forEach(fieldName => {
+                if (availableFields.metrics.some(f => f.name === fieldName)) metrics.push(fieldName);
+                else if (availableFields.segments.some(f => f.name === fieldName)) segments.push(fieldName);
+                else if (availableFields.attributes.some(f => f.name === fieldName)) attributes.push(fieldName);
+            });
+        }
         
         onConfigChange({
             customer_id: customerId,
@@ -75,7 +114,7 @@ export default function GoogleAdsFields({ onConfigChange, client }: { onConfigCh
             segments,
             attributes,
         });
-    }, [customerId, selectedResource, selectedFields, availableFields, onConfigChange]);
+    }, [customerId, selectedResource, selectedFields, onConfigChange]);
     
     const toggleFieldSelection = (fieldName: string) => {
         setSelectedFields(prev => {
@@ -142,7 +181,6 @@ export default function GoogleAdsFields({ onConfigChange, client }: { onConfigCh
                                                     {category.charAt(0).toUpperCase() + category.slice(1)} ({fields.length})
                                                 </button>
                                             </h2>
-                                            {/* 👇 就是這裡被修改了 */}
                                             <div 
                                                 id={`collapse-${category}`} 
                                                 className={`accordion-collapse collapse list-group list-group-flush ${expandedCategories.has(category) ? 'show' : ''}`}

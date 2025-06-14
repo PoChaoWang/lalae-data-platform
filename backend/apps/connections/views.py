@@ -927,7 +927,13 @@ def client_oauth_authorize(request, client_id): # client_id is UUID here
     client = get_object_or_404(Client, id=client_id)
 
     request.session['oauth_client_id_to_link'] = str(client.id)
-    request.session['final_redirect_after_oauth_link'] = request.META.get('HTTP_REFERER', reverse('connections:connection_list'))
+    redirect_path = request.GET.get('redirect_uri')
+    if redirect_path:
+        # 如果前端有提供，就使用它
+        request.session['final_redirect_after_oauth_link'] = redirect_path
+    else:
+        # 如果沒有提供，則使用一個安全的預設值 (例如前端的首頁)
+        request.session['final_redirect_after_oauth_link'] = "/"
 
     if data_source_name == "GOOGLE_ADS":
         # 直接使用 allauth 的 Google 登入 URL
@@ -958,6 +964,8 @@ def oauth_callback(request): # Primarily for Google via AllAuth
     logger.info(f"Session data: oauth_client_id_to_link={request.session.get('oauth_client_id_to_link')}")
     
     client_id = request.session.pop('oauth_client_id_to_link', None)
+    redirect_path = request.session.pop('final_redirect_after_oauth_link', '/')
+
     if not client_id:
         logger.error("No client_id found in session")
         messages.error(request, "OAuth session expired or invalid. Please try again.")
@@ -1002,28 +1010,11 @@ def oauth_callback(request): # Primarily for Google via AllAuth
     except Exception as e:
         logger.error(f"Unexpected error during OAuth callback: {e}")
         messages.error(request, "An error occurred while linking the account. Please try again.")
-    
-    # Redirect in the Backend
-    # redirect_url = request.session.pop('final_redirect_after_oauth_link', None)
-
-    # if not redirect_url:
-    #     # 如果沒有儲存的重導向 URL，嘗試回到連接建立頁面
-    #     base_url = reverse('connections:connection_create', kwargs={
-    #         'source_name': 'GOOGLE_ADS',
-    #         'client_id': client_id
-    #     })
-    #     dataset_id = request.session.get('selected_dataset_id')
-    #     if dataset_id:
-    #         redirect_url = f"{base_url}?dataset_id={dataset_id}"
-    #     else:
-    #         redirect_url = base_url
-    
-    # logger.info(f"Redirecting to: {redirect_url}")
-    # return redirect(redirect_url)
 
     # Redirect in the Frontend
-    final_redirect_url = 'http://localhost:3000/auth/callback'
-    logger.info(f"Redirecting to fixed frontend callback page: {final_redirect_url}")
+    final_redirect_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}{redirect_path}"
+    
+    logger.info(f"OAuth success. Redirecting to dynamic frontend URL: {final_redirect_url}")
     return redirect(final_redirect_url)
 
 class GoogleOAuth2CustomCallbackView(OAuth2CallbackView, View):

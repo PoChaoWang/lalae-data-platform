@@ -43,6 +43,8 @@ GOOGLE_ADS_DEVELOPER_TOKEN = env("GOOGLE_ADS_DEVELOPER_TOKEN")
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET")
 
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
+
 if not GOOGLE_CLOUD_PROJECT_ID:
     raise ImproperlyConfigured(
         "GOOGLE_CLOUD_PROJECT_ID environment variable is not set"

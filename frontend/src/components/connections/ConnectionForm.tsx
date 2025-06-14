@@ -236,8 +236,9 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   const handleAuthorize = () => {
     const fullPath = pathname + '?' + searchParams.toString();
     localStorage.setItem('oauth_redirect_path', fullPath);
+    const encodedRedirectPath = encodeURIComponent(fullPath);
     
-    const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}?data_source=${dataSource.name}`;
+    const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}?data_source=${dataSource.name}&redirect_uri=${encodedRedirectPath}`;
     window.location.href = authUrl;
   };
 

@@ -4,15 +4,21 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getCookie } from '@/lib/utils';
 import CloneConnectionButton from '@/components/connections/CloneConnectionButton'; 
 import DeleteConnectionModal from '@/components/connections/DeleteConnectionModal';
 import { Connection } from '@/lib/definitions';
 
-// 假設後端 URL 在環境變數中
+// ✨ 導入所有需要的 UI 元件和圖示
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ArrowLeft, Zap, ChevronDown, Settings, Trash2, Loader2, AlertCircle } from "lucide-react";
+
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
-
-
 
 export default function ConnectionDetailPage() {
   const params = useParams();
@@ -31,6 +37,7 @@ export default function ConnectionDetailPage() {
   const [syncMinute, setSyncMinute] = useState('00');
   const [weeklyDayOfWeek, setWeeklyDayOfWeek] = useState('1');
   const [monthlyDayOfMonth, setMonthlyDayOfMonth] = useState(1);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
@@ -79,10 +86,12 @@ export default function ConnectionDetailPage() {
 
   const handleUpdateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsUpdating(true);
     setUpdateMessage(null);
 
     if (!csrfToken) {
       setUpdateMessage({ type: 'error', text: 'Security token is missing. Cannot update.' });
+      setIsUpdating(false);
       return;
     }
 
@@ -124,147 +133,147 @@ export default function ConnectionDetailPage() {
     }
   };
   
-
-  if (loading) return <div className="container my-4">Loading...</div>;
-  if (error) return <div className="container my-4 alert alert-danger">{error}</div>;
-  if (!connection) return <div className="container my-4">Connection not found.</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white">
+        <Loader2 className="w-8 h-8 animate-spin text-orange-400" />
+      </div>
+    );
+  }
+  
+  if (error || !connection) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-900 text-white p-4">
+          <Alert variant="destructive" className="max-w-lg bg-red-900/50 border-red-500/50 text-red-300">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error || "Connection not found."}</AlertDescription>
+          </Alert>
+      </div>
+    );
+  }
 
   return (
-    <div className="container my-4">
-      <div className="d-flex justify-content-between align-items-center mb-3">
-        <div>
-          <h1 className="h3 mb-0">Connection Details</h1>
-          <p className="text-muted mb-0">{connection.display_name}</p>
+    <div className="relative z-10 max-w-4xl mx-auto py-8 px-4">
+        <div className="mb-8">
+            <Link href="/connections" className="flex items-center space-x-2 text-gray-400 hover:text-orange-400 transition-colors duration-300 group">
+                <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-300" />
+                <span>Back to Connections</span>
+            </Link>
         </div>
-        <Link href="/connections" className="btn btn-outline-secondary">
-          <i className="bi bi-arrow-left"></i> Back to List
-        </Link>
-      </div>
 
-      <div className="card mb-4">
-        <div className="card-header">
-          <h5 className="mb-0">{connection.data_source.display_name} Connection</h5>
-        </div>
-        <div className="card-body">
-          <dl className="row">
-            <dt className="col-sm-3">Display Name</dt>
-            <dd className="col-sm-9">{connection.display_name}</dd>
-
-            <dt className="col-sm-3">Data Source</dt>
-            <dd className="col-sm-9">{connection.data_source.display_name}</dd>
-
-            <dt className="col-sm-3">Status</dt>
-            <dd className="col-sm-9"><span className={`badge bg-${connection.status === 'ACTIVE' ? 'success' : 'secondary'}`}>{connection.status}</span></dd>
-
-            <dt className="col-sm-3">BigQuery Dataset ID</dt>
-            <dd className="col-sm-9">{connection.target_dataset_id}</dd>
-            
-            {/* 根據需要添加更多詳情 */}
-
-            <dt className="col-sm-3">Full Configuration</dt>
-            <dd className="col-sm-9">
-              <details>
-                <summary style={{ cursor: 'pointer', color: '#0d6efd' }}>Click to expand</summary>
-                <pre className="bg-light p-2 border rounded mt-2">
-                  <code>{JSON.stringify(connection.config, null, 2)}</code>
-                </pre>
-              </details>
-            </dd>
-          </dl>
-        </div>
-      </div>
-
-      {/* 更新表單 */}
-      <div className="card mb-4">
-        <div className="card-header">
-            <h5 className="mb-0">Update Sync Schedule & Status</h5>
-        </div>
-        <div className="card-body">
-            {updateMessage && (
-                <div className={`alert alert-${updateMessage.type}`}>
-                    {updateMessage.text}
+        {/* Section 1: Connection Details */}
+        <div className="bg-gray-800/30 backdrop-blur-sm border border-orange-500/20 rounded-2xl p-8 mb-8">
+            <h2 className="text-2xl font-semibold text-orange-400 mb-6 flex items-center space-x-2"><Zap className="w-6 h-6" /><span>Connection Details</span></h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
+                <div className="overflow-hidden">
+                  <Label className="text-gray-400 text-sm">Connection Name</Label>
+                  <div className="mt-1 text-xl font-semibold break-words">{connection.display_name}</div>
                 </div>
-            )}
-            <form onSubmit={handleUpdateSchedule}>
-                <div className="form-check form-switch form-control-lg mb-4">
-                    <input className="form-check-input" type="checkbox" role="switch" id="id_is_enabled" checked={isEnabled} onChange={e => setIsEnabled(e.target.checked)} />
-                    <label className="form-check-label" htmlFor="id_is_enabled">
-                        Connection Status: <span className={`badge ${isEnabled ? 'bg-success' : 'bg-secondary'}`}>{isEnabled ? 'ON' : 'OFF'}</span>
-                    </label>
-                    <div className="form-text">If disabled(OFF), this connection will not be synced the data to BigQuery.</div>
+                <div><Label className="text-gray-400 text-sm">Data Source</Label><div className="mt-1 font-medium">{connection.data_source.display_name}</div></div>
+                <div className="overflow-hidden">
+                  <Label className="text-gray-400 text-sm">Dataset ID</Label>
+                  <div className="mt-1"><code className="bg-gray-900/50 text-orange-300 px-3 py-2 rounded-md font-mono break-all">{connection.target_dataset_id}</code></div>
                 </div>
+                <div><Label className="text-gray-400 text-sm">Status</Label><div className={`mt-1 font-semibold ${connection.is_enabled ? "text-green-400" : "text-gray-400"}`}>{connection.is_enabled ? 'Active' : 'Inactive'}</div></div>
+            </div>
+            <Collapsible className="mt-6">
+                <CollapsibleTrigger className="flex items-center text-orange-400 text-sm"><ChevronDown className="w-4 h-4 mr-1" /><span>View Full Configuration</span></CollapsibleTrigger>
+                <CollapsibleContent className="mt-4 bg-gray-900/50 rounded-lg p-4"><pre className="text-sm text-gray-300 overflow-auto"><code>{JSON.stringify(connection.config, null, 2)}</code></pre></CollapsibleContent>
+            </Collapsible>
+        </div>
 
-                {/* 2. 建立完整的表單 JSX */}
-                <div className="row align-items-end">
-                    <div className="col-md-3 mb-3">
-                        <label htmlFor="sync_frequency" className="form-label">Sync Frequency</label>
-                        <select id="sync_frequency" value={syncFrequency} onChange={e => setSyncFrequency(e.target.value)} className="form-select">
-                            <option value="once">Once</option>
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                        </select>
-                    </div>
-                    <div className="col-md-3 mb-3">
-                        <label htmlFor="sync_hour" className="form-label">Hour (24h)</label>
-                        <select id="sync_hour" value={syncHour} onChange={e => setSyncHour(e.target.value)} className="form-select">
-                            {[...Array(24).keys()].map(h => <option key={h} value={String(h).padStart(2, '0')}>{String(h).padStart(2, '0')}</option>)}
-                        </select>
-                    </div>
-                    <div className="col-md-3 mb-3">
-                        <label htmlFor="sync_minute" className="form-label">Minute</label>
-                        <select id="sync_minute" value={syncMinute} onChange={e => setSyncMinute(e.target.value)} className="form-select">
-                            <option value="00">00</option><option value="15">15</option>
-                            <option value="30">30</option><option value="45">45</option>
-                        </select>
+        {/* Section 2: Update Settings */}
+        <div className="bg-gray-800/30 backdrop-blur-sm border border-orange-500/20 rounded-2xl p-8 mb-8">
+            <h2 className="text-2xl font-semibold text-orange-400 mb-6 flex items-center space-x-2"><Settings className="w-6 h-6" /><span>Update Settings</span></h2>
+            <form onSubmit={handleUpdateSchedule} className="space-y-6">
+                {updateMessage && (
+                    <Alert variant={updateMessage.type === 'error' ? 'destructive' : 'default'} className={updateMessage.type === 'success' ? 'bg-green-900/50 border-green-500/50 text-green-300' : ''}>
+                        <AlertTitle>{updateMessage.type === 'success' ? 'Success' : 'Error'}</AlertTitle>
+                        <AlertDescription>{updateMessage.text}</AlertDescription>
+                    </Alert>
+                )}
+                <div>
+                    <Label className="text-white font-medium">Connection Status</Label>
+                    <div className="flex items-center space-x-2">
+                        <div className="inline-flex bg-gray-700/50 rounded-lg p-1">
+                            <button type="button" onClick={() => setIsEnabled(false)} className={`px-4 py-1 text-sm rounded-md transition-colors ${!isEnabled ? 'bg-red-500 text-white' : 'text-gray-400 hover:bg-gray-600/50'}`}>
+                                OFF
+                            </button>
+                            <button type="button" onClick={() => setIsEnabled(true)} className={`px-4 py-1 text-sm rounded-md transition-colors ${isEnabled ? 'bg-green-500 text-white' : 'text-gray-400 hover:bg-gray-600/50'}`}>
+                                ON
+                            </button>
+                        </div>
+                        <span className="text-gray-400 text-sm">If OFF, this connection will not sync data.</span>
                     </div>
                 </div>
-
-                {/* 根據 syncFrequency 條件性顯示 */}
+                <div>
+                    <Label className="text-white font-medium">Sync Frequency</Label>
+                    <div className="mt-2 flex space-x-2">
+                        {["once", "daily", "weekly", "monthly"].map((freq) => (
+                            <button key={freq} type="button" onClick={() => setSyncFrequency(freq)}
+                                className={`px-4 py-2 rounded-lg border transition-all duration-300 capitalize ${syncFrequency === freq ? "bg-orange-500 text-black border-orange-500" : "bg-gray-800 text-gray-300 border-gray-600 hover:border-orange-500/50"}`}>
+                                {freq}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label className="text-white font-medium">Hour</Label>
+                        <Input type="number" min="0" max="23" value={syncHour} onChange={(e) => setSyncHour(e.target.value)} className="mt-2 bg-gray-900/50 border-gray-600/50"/>
+                    </div>
+                    <div>
+                        <Label className="text-white font-medium">Minute</Label>
+                        <Input type="number" min="0" max="59" value={syncMinute} onChange={(e) => setSyncMinute(e.target.value)} className="mt-2 bg-gray-900/50 border-gray-600/50"/>
+                    </div>
+                </div>
                 {syncFrequency === 'weekly' && (
-                    <div className="mb-3">
-                        <label htmlFor="weekly_day_of_week" className="form-label">Day of Week</label>
-                        <select id="weekly_day_of_week" value={weeklyDayOfWeek} onChange={e => setWeeklyDayOfWeek(e.target.value)} className="form-select" style={{maxWidth: '250px'}}>
-                            <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
-                            <option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option>
-                            <option value="0">Sunday</option>
-                        </select>
+                    <div>
+                        <Label className="text-white font-medium">Day of Week</Label>
+                        <Select value={weeklyDayOfWeek} onValueChange={setWeeklyDayOfWeek}>
+                          <SelectTrigger className="mt-2 bg-gray-900/50 border-gray-600/50"><SelectValue /></SelectTrigger>
+                          <SelectContent className="bg-gray-800 border-gray-700">
+                            <SelectItem value="1">Monday</SelectItem><SelectItem value="2">Tuesday</SelectItem><SelectItem value="3">Wednesday</SelectItem>
+                            <SelectItem value="4">Thursday</SelectItem><SelectItem value="5">Friday</SelectItem><SelectItem value="6">Saturday</SelectItem>
+                            <SelectItem value="0">Sunday</SelectItem>
+                          </SelectContent>
+                        </Select>
                     </div>
                 )}
-
                 {syncFrequency === 'monthly' && (
-                    <div className="mb-3">
-                        <label htmlFor="monthly_day_of_month" className="form-label">Day of Month</label>
-                        <input id="monthly_day_of_month" type="number" min="1" max="31" value={monthlyDayOfMonth} onChange={e => setMonthlyDayOfMonth(parseInt(e.target.value, 10))} className="form-control" style={{maxWidth: '250px'}} />
+                    <div>
+                        <Label className="text-white font-medium">Day of Month</Label>
+                        <Input type="number" min="1" max="31" value={monthlyDayOfMonth} onChange={(e) => setMonthlyDayOfMonth(parseInt(e.target.value, 10))} className="mt-2 bg-gray-900/50 border-gray-600/50 max-w-32"/>
                     </div>
                 )}
-
-                <button type="submit" className="btn btn-success">
-                    <i className="bi bi-save"></i> Update
-                </button>
+                <Button type="submit" disabled={isUpdating} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold">
+                    {isUpdating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    {isUpdating ? "Updating..." : "Update Schedule"}
+                </Button>
             </form>
         </div>
-      </div>
 
-      <div className="d-flex justify-content-end gap-2 mt-4">
-        {/* 直接使用 Clone 按鈕，傳入 connectionId */}
-        <CloneConnectionButton connectionId={connection.id} />
-        
-        {/* 這個按鈕只負責打開 Modal */}
-        <button onClick={() => setIsDeleteModalOpen(true)} className="btn btn-danger">
-            <i className="bi bi-trash"></i> Delete Connection
-        </button>
-      </div>
+        {/* Section 3: Actions */}
+        <div className="bg-gray-800/30 backdrop-blur-sm border border-orange-500/20 rounded-2xl p-8">
+            <h2 className="text-2xl font-semibold text-orange-400 mb-6">Actions</h2>
+            <div className="flex space-x-4">
+                <CloneConnectionButton connectionId={connection.id} />
+                <Button onClick={() => setIsDeleteModalOpen(true)} className="bg-red-600 hover:bg-red-700 text-white font-semibold">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Connection
+                </Button>
+            </div>
+        </div>
 
-      {/* 將 Modal 元件放在這裡。它在 isOpen=false 時不會顯示任何東西 */}
-      <DeleteConnectionModal 
-        isOpen={isDeleteModalOpen} 
-        onClose={() => setIsDeleteModalOpen(false)}
-        connectionId={connection.id}
-        connectionName={connection.display_name}
-        csrfToken={csrfToken}
-      />
-
+        {/* The Modal */}
+        <DeleteConnectionModal 
+            isOpen={isDeleteModalOpen} 
+            onClose={() => setIsDeleteModalOpen(false)}
+            connectionId={connection.id}
+            connectionName={connection.display_name}
+            csrfToken={csrfToken}
+        />
     </div>
   );
 }

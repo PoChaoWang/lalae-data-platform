@@ -2,24 +2,19 @@
 
 import { AuthProvider } from '@/lib/AuthContext';
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import Navbar from '@/components/ui/Navbar'; 
+import Footer from '@/components/ui/Footer';
 import "./globals.css";
-import 'bootstrap/dist/css/bootstrap.min.css';
 import Script from 'next/script'; 
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
-  title: 'LaLaE - Next.js',
+  title: 'LaLaE',
   description: 'Migrated from Django to Next.js',
 };
 
@@ -29,24 +24,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <head>
-        {/* 只保留真正全域需要的 CSS */}
-        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet" />
+        <meta charSet="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
+        <link rel="icon" href="/favicon.ico" />
       </head>
-      <body>
+      <body className="min-h-screen bg-background font-sans antialiased">
+        
+
         <AuthProvider>
           <Navbar />
-          <main>{children}</main>
-
-          
-          
+          <main className="flex-1">{children}</main> 
+          <Footer />
         </AuthProvider>
-        {/* <script 
-          src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"
-          integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL"
-          crossOrigin="anonymous"
-        ></script> */}
       </body>
     </html>
   );

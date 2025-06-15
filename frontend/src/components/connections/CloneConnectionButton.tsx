@@ -1,14 +1,9 @@
+// /components/connections/CloneConnectionButton.tsx
 'use client';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
-import { Connection } from '@/lib/definitions';
+import { Button } from '@/components/ui/button';
+import { Copy } from 'lucide-react';
 
-// Pleae change the URL in the env.local file if you need
-// const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
-const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
-
-// export default function CloneConnectionButton({ connection }: { connection: Connection; }) {
-  
 export default function CloneConnectionButton({ connectionId }: { connectionId: number; }) {
   const router = useRouter();
 
@@ -18,9 +13,15 @@ export default function CloneConnectionButton({ connectionId }: { connectionId: 
     router.push(`/connections/new?${params.toString()}`);
   };
 
+  // ✨ 使用新的 Button 元件
   return (
-    <button onClick={handleClone} className="btn btn-secondary">
-      <i className="bi bi-copy"></i> Clone to New Connection
-    </button>
+    <Button
+      onClick={handleClone}
+      variant="outline"
+      className="border-orange-500/30 text-orange-400 hover:bg-orange-500/10 hover:border-orange-500/50"
+    >
+      <Copy className="w-4 h-4 mr-2" />
+      Clone Connection
+    </Button>
   );
 }

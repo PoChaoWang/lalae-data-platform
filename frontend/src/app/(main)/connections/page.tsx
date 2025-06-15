@@ -1,21 +1,37 @@
 // /app/(main)/connections/page.tsx
-import ProtectedComponent from '@/components/ProtectedComponent'; 
+import ProtectedComponent from '@/components/ProtectedComponent';
 import ConnectionList from '@/components/connections/ConnectionList';
 import Link from 'next/link';
+import { Zap, Plus } from 'lucide-react'; // 匯入圖示
+import { Button } from '@/components/ui/button'; // 匯入 Button 元件
 
-// ✨ 修正：頁面元件本身不再獲取資料，只負責佈局和渲染客戶端元件
 export default function ConnectionsPage() {
   return (
     <ProtectedComponent>
-        <div className="container">
-        <div className="d-flex justify-content-between align-items-center content-header">
-            <h1>My Connections</h1>
-            <Link href="/connections/new" className="btn btn-primary">Add Connection</Link>
+      <div className="mx-auto w-full max-w-8xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center space-x-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/25">
+              <Zap className="w-6 h-6 text-black" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-orange-200 to-orange-400 bg-clip-text text-transparent">
+                Connections
+              </h1>
+              <p className="text-gray-400 mt-1">Manage your data source connections</p>
+            </div>
+          </div>
+
+          <Link href="/connections/new">
+            <Button className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-6 py-3 rounded-lg shadow-2xl hover:shadow-orange-500/50 transition-all duration-300 hover:scale-105">
+              <Plus className="w-5 h-5 mr-2" />
+              Create New Connection
+            </Button>
+          </Link>
         </div>
-        {/* 將資料獲取的任務交給 ConnectionList 元件 */}
+        
         <ConnectionList />
-        </div>
+      </div>
     </ProtectedComponent>
-    
   );
 }

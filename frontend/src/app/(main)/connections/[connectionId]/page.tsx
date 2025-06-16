@@ -130,6 +130,8 @@ export default function ConnectionDetailPage() {
 
     } catch (err: any) {
       setUpdateMessage({ type: 'error', text: err.message });
+    } finally {
+      setIsUpdating(false);
     }
   };
   

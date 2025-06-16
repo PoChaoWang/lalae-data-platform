@@ -238,7 +238,7 @@ export default function FacebookAdsFields({ onConfigChange, client, initialConfi
                                             <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
                                                 {filteredFields.map((field) => (
                                                     <button key={field.name} onClick={() => toggleSelection(category, field.name)}
-                                                        className={`w-full text-left p-2 rounded-md hover:bg-gray-700/30 flex items-center justify-between group ${formState[`selected_${category}`].has(field.name) ? "bg-orange-500/10 text-orange-300" : "text-gray-300"}`}>
+                                                        className={`w-full text-left p-2 rounded-md hover:bg-gray-700/30 flex items-center justify-between group ${formState[`selected_${category}`].has(field.name) ? "bg-orange-500/10 text-orange-300" : "text-gray-300"}`} type="button">
                                                         <span>{field.label}</span>
                                                         {formState[`selected_${category}`].has(field.name) ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4 opacity-0 group-hover:opacity-100" />}
                                                     </button>
@@ -271,7 +271,7 @@ export default function FacebookAdsFields({ onConfigChange, client, initialConfi
                                                 return (
                                                     <Badge key={fieldName} variant="secondary" className="bg-orange-500/20 text-orange-300 border-orange-500/30">
                                                         {field?.label || fieldName}
-                                                        <button onClick={() => toggleSelection(category, fieldName)} className="ml-2">
+                                                        <button onClick={() => toggleSelection(category, fieldName)} className="ml-2" type="button">
                                                             <X className="w-3 h-3"/>
                                                         </button>
                                                     </Badge>
@@ -285,7 +285,7 @@ export default function FacebookAdsFields({ onConfigChange, client, initialConfi
                         </div>
                         {totalSelected > 0 && (
                             <div className="flex justify-end">
-                                <Button onClick={() => setFormState(prev => ({...prev, selected_fields: new Set(), selected_breakdowns: new Set(), selected_action_breakdowns: new Set()}))} variant="destructive" size="sm">
+                                <Button onClick={() => setFormState(prev => ({...prev, selected_fields: new Set(), selected_breakdowns: new Set(), selected_action_breakdowns: new Set()}))} variant="destructive" size="sm" type="button">
                                     Clear All Selections
                                 </Button>
                             </div>

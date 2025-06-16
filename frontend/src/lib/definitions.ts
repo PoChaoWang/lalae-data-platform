@@ -20,9 +20,9 @@ export type Client = {
     name: string;
     description: string | null; // 描述可能是選填的，所以可以是 null
     is_active: boolean;
-    bigquery_dataset_id: string | null; // BigQuery ID 可能在建立初期是 null
+    bigquery_dataset_id: string; // BigQuery ID 可能在建立初期是 null
     created_at: string; // 在 JSON 中，DateTime 物件會被序列化成 ISO 格式的字串
-    created_by: string | null; // 建立者的 username，可能為 null
+    created_by: string; // 建立者的 username，可能為 null
     updated_at: string | null; // ISO 格式的字串
     };
   

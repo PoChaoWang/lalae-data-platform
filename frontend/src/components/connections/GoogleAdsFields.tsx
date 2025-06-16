@@ -247,6 +247,7 @@ export default function GoogleAdsFields({ onConfigChange, client, initialConfig 
                                                 {filteredFields.map((field) => (
                                                     <button
                                                         key={field.name}
+                                                        type="button"
                                                         onClick={() => toggleFieldSelection(field.name)}
                                                         className={`w-full text-left p-2 rounded-md hover:bg-gray-700/30 flex items-center justify-between group ${selectedFields.has(field.name) ? "bg-orange-500/10 text-orange-300" : "text-gray-300"}`}
                                                     >
@@ -296,7 +297,7 @@ export default function GoogleAdsFields({ onConfigChange, client, initialConfig 
                         </div>
                          {selectedFields.size > 0 && (
                             <div className="mt-4 flex justify-end">
-                                <Button onClick={() => setSelectedFields(new Set())} variant="destructive" size="sm">
+                                <Button onClick={() => setSelectedFields(new Set())} variant="destructive" size="sm" type="button">
                                     Clear All
                                 </Button>
                             </div>

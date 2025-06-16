@@ -252,6 +252,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
                     <Button 
                       onClick={handleAuthorize} 
                       variant="outline" 
+                      type="button"
                       className="border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white"
                     >
                         Re-authorize
@@ -264,6 +265,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
                     <Button 
                       onClick={handleAuthorize} 
                       className="bg-orange-500 hover:bg-orange-600 text-black font-semibold"
+                      type="button"
                     >
                         <LogIn className="w-4 h-4 mr-2" />
                         Authorize {providerName} Account

@@ -31,13 +31,13 @@ export default function RootLayout({
         <meta httpEquiv="X-UA-Compatible" content="ie=edge" />
         <link rel="icon" href="/favicon.ico" />
       </head>
-      <body className="min-h-screen bg-background font-sans antialiased">
-        
-
+      <body className="bg-background font-sans antialiased">
         <AuthProvider>
-          <Navbar />
-          <main className="flex-1">{children}</main> 
-          <Footer />
+          <div className="flex flex-col min-h-screen">
+            <Navbar />
+            <main className="flex-1">{children}</main> 
+            <Footer />
+          </div>
         </AuthProvider>
       </body>
     </html>

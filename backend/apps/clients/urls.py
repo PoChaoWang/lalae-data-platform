@@ -17,5 +17,7 @@ urlpatterns = [
     path('<uuid:pk>/delete/', views.ClientDeleteView.as_view(), name='client-delete'),
 
     # --- API Path ---
+    path('api/csrf/', views.get_csrf_token, name='api-csrf'),
     path('api/', include(router.urls)),
+    
 ] 

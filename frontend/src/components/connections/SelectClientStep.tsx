@@ -84,7 +84,7 @@ export default function SelectClientStep({
                 </div>
 
                 {/* --- ✨ Client selection now uses a grid layout --- */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                <div className="flex flex-col space-y-2 max-h-96 overflow-y-auto pr-2">
                     {filteredClients.map((client) => (
                         <div
                             key={client.id}

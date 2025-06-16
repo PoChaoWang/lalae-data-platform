@@ -6,14 +6,77 @@ from django.urls import reverse_lazy
 from django.contrib import messages
 from .models import Client
 from .forms import ClientForm
-from django.views.decorators.csrf import csrf_exempt
+from django.middleware.csrf import get_token
 import json
 from rest_framework import viewsets, permissions
 from .serializers import ClientSerializer
-
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse, HttpResponse
 
 import re
+
+class ClientViewSet(viewsets.ModelViewSet):
+
+    serializer_class = ClientSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        base_queryset = Client.objects.select_related('created_by')
+
+        if self.request.user.is_superuser:
+            return Client.objects.all().order_by('-created_at')
+        
+        return base_queryset.filter(settings__user=user).distinct().order_by('-created_at')
+
+    def perform_create(self, serializer):
+        """
+        在建立新物件時，自動將 created_by 設為當前登入的使用者。
+        """
+        client = serializer.save(created_by=self.request.user)
+
+        try:
+            # 清理名稱
+            clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', client.name.lower())
+            clean_name = re.sub(r'_+', '_', clean_name).strip('_')
+            
+            # 清理 UUID - 移除 - 符號
+            clean_id = str(client.id).replace('-', '_')
+            
+            dataset_id = f"{clean_name}_{clean_id}"
+            
+            # 設定 BigQuery dataset ID 並再次儲存
+            client.bigquery_dataset_id = dataset_id
+            client.save()
+            
+            # 儲存客戶設定
+            client.save_client_setting(
+                user=self.request.user,
+                is_owner=True,
+                can_edit=True,
+                can_view_gcp=True,
+                can_manage_gcp=True
+            )
+
+            # 呼叫非同步任務來建立 BigQuery dataset
+            client.create_bigquery_dataset_async(user_id=self.request.user.id)
+            
+        except Exception as e:
+            # 如果後續步驟出錯，可以考慮刪除剛剛建立的 client，
+            # 或者至少記錄下錯誤。
+            print(f"Error during post-create operations for client {client.id}: {e}")
+            # 這裡可以引發一個錯誤，讓前端知道出了問題
+            # from rest_framework.exceptions import APIException
+            # raise APIException("Failed to perform post-creation tasks.")
+
+@ensure_csrf_cookie
+def get_csrf_token(request):
+    """
+    這個 view 的唯一目的，就是確保 CSRF cookie
+    被設定在 client 的瀏覽器中。
+    """
+    token = get_token(request)
+    return JsonResponse({'csrfToken': token})
 
 class ClientListView(LoginRequiredMixin, ListView):
     model = Client
@@ -122,56 +185,4 @@ class ClientDeleteView(LoginRequiredMixin, DeleteView):
         return Client.objects.filter(settings__user=self.request.user, settings__is_owner=True)
 
 
-class ClientViewSet(viewsets.ModelViewSet):
 
-    serializer_class = ClientSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        base_queryset = Client.objects.select_related('created_by')
-
-        if self.request.user.is_superuser:
-            return Client.objects.all().order_by('-created_at')
-        
-        return base_queryset.filter(settings__user=user).distinct().order_by('-created_at')
-
-    def perform_create(self, serializer):
-        """
-        在建立新物件時，自動將 created_by 設為當前登入的使用者。
-        """
-        client = serializer.save(created_by=self.request.user)
-
-        try:
-            # 清理名稱
-            clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', client.name.lower())
-            clean_name = re.sub(r'_+', '_', clean_name).strip('_')
-            
-            # 清理 UUID - 移除 - 符號
-            clean_id = str(client.id).replace('-', '_')
-            
-            dataset_id = f"{clean_name}_{clean_id}"
-            
-            # 設定 BigQuery dataset ID 並再次儲存
-            client.bigquery_dataset_id = dataset_id
-            client.save()
-            
-            # 儲存客戶設定
-            client.save_client_setting(
-                user=self.request.user,
-                is_owner=True,
-                can_edit=True,
-                can_view_gcp=True,
-                can_manage_gcp=True
-            )
-
-            # 呼叫非同步任務來建立 BigQuery dataset
-            client.create_bigquery_dataset_async(user_id=self.request.user.id)
-            
-        except Exception as e:
-            # 如果後續步驟出錯，可以考慮刪除剛剛建立的 client，
-            # 或者至少記錄下錯誤。
-            print(f"Error during post-create operations for client {client.id}: {e}")
-            # 這裡可以引發一個錯誤，讓前端知道出了問題
-            # from rest_framework.exceptions import APIException
-            # raise APIException("Failed to perform post-creation tasks.")

@@ -1,6 +1,7 @@
 // app/layout.tsx
 
 import { AuthProvider } from '@/lib/AuthContext';
+import { ProtectedFetchProvider } from "@/contexts/ProtectedFetchContext"; 
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Navbar from '@/components/ui/Navbar'; 
@@ -33,11 +34,13 @@ export default function RootLayout({
       </head>
       <body className="bg-background font-sans antialiased">
         <AuthProvider>
-          <div className="flex flex-col min-h-screen">
-            <Navbar />
-            <main className="flex-1">{children}</main> 
-            <Footer />
-          </div>
+          <ProtectedFetchProvider>
+            <div className="flex flex-col min-h-screen">
+              <Navbar />
+              <main className="flex-1">{children}</main> 
+              <Footer />
+            </div>
+          </ProtectedFetchProvider>
         </AuthProvider>
       </body>
     </html>

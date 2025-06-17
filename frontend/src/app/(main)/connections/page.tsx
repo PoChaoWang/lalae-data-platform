@@ -6,20 +6,9 @@ import ConnectionList from '@/components/connections/ConnectionList';
 import Link from 'next/link';
 import { Zap, Plus } from 'lucide-react'; // 匯入圖示
 import { Button } from '@/components/ui/button'; // 匯入 Button 元件
-import { useSession } from "next-auth/react";
-import { useState, useEffect } from "react";
-import { useProtectedQuery } from '@/hooks/useProtectedQuery';
-import { Connection } from '@/lib/definitions';
+
 
 export default function ConnectionsPage() {
-  const { data: session, status } = useSession();
-  const [dashboardData, setDashboardData] = useState(null);
-
-  const apiUrl = `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/connections/`;
-  const { data: connections, error, isLoading } = useProtectedQuery<Connection[]>(apiUrl);
-
-  console.log("Connections:", connections);
-   
 
   return (
     <ProtectedComponent>
@@ -45,11 +34,7 @@ export default function ConnectionsPage() {
           </Link>
         </div>
         
-       <ConnectionList 
-          connections={connections} 
-          isLoading={isLoading}
-          error={error}
-        />
+        <ConnectionList />
       </div>
     </ProtectedComponent>
   );

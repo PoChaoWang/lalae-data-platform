@@ -3,6 +3,7 @@
 
 import { useState, useEffect, Fragment } from 'react';
 import { useRouter } from 'next/navigation';
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 import type { Connection, ConnectionExecution } from '@/lib/definitions';
 import {
   useReactTable,
@@ -37,17 +38,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 // Please change the URL in the env.local file if you need
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-interface ConnectionListProps {
-    connections: Connection[] | null;
-    isLoading: boolean;
-    error: string | null;
-  }
-
-export default function ConnectionList({ connections, isLoading, error }: ConnectionListProps) {
+export default function ConnectionList() {
   const router = useRouter();
-//   const [connections, setConnections] = useState<Connection[]>([]);
+  const { protectedFetch } = useProtectedFetch();
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-//   const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [expandedConnectionId, setExpandedConnectionId] = useState<number | null>(null);
   const [history, setHistory] = useState<ConnectionExecution[]>([]);
@@ -142,15 +138,35 @@ export default function ConnectionList({ connections, isLoading, error }: Connec
 
   // --- NEW: TanStack Table Instance ---
   const table = useReactTable({
-    data: connections ?? [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    enableColumnResizing: true,
-    columnResizeMode: 'onChange',
-    getRowId: (row) => String(row.id),
-});
+      data: connections,
+      columns,
+      getCoreRowModel: getCoreRowModel(),
+      enableColumnResizing: true, // Enable the resizing feature
+      columnResizeMode: 'onChange', // 'onChange' is smoother than 'onEnd'
+      getRowId: (row) => String(row.id), // Use connection ID as the unique row ID
+  });
 
-
+  useEffect(() => {
+    if (!protectedFetch) {
+        return;
+      }
+    const fetchConnections = async () => {
+        try {
+          const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/`);
+          if (!res.ok) {
+            throw new Error('Failed to fetch connections');
+          }
+          const data = await res.json();
+          setConnections(data);
+        } catch (err: any) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+  
+      fetchConnections();
+    }, [protectedFetch]);
 
   const handleToggleExpand = async (connectionId: number) => {
     if (expandedConnectionId === connectionId) {
@@ -207,7 +223,7 @@ export default function ConnectionList({ connections, isLoading, error }: Connec
   };
 
   // --- Loading State Placeholder ---
-  if (isLoading) return (
+  if (loading) return (
     <div className="bg-gray-800/30 backdrop-blur-sm border border-orange-500/20 rounded-2xl overflow-hidden">
          <table className="w-full">
             <thead className="border-b border-gray-700/50">

@@ -51,8 +51,8 @@ export default function ConnectionDetailPage() {
       try {
         // ✨ 使用 Promise.all 同時發起兩個請求
         const [connRes, csrfRes] = await Promise.all([
-          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/`, { credentials: 'include' }),
-          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/get-csrf-token/`, { credentials: 'include' })
+          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, { credentials: 'include' }),
+          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/get-csrf-token/`, { credentials: 'include' })
         ]);
 
         if (!connRes.ok) throw new Error('Failed to fetch connection details.');
@@ -109,7 +109,7 @@ export default function ConnectionDetailPage() {
     
     // Django REST Framework 的 ModelViewSet 預設就支援 PATCH
     try {
-      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/`, {
+      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',

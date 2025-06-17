@@ -26,7 +26,7 @@ export default function DeleteConnectionModal({ isOpen, onClose, connectionId, c
       return;
     }
     try {
-      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/`, {
+      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, {
           method: 'DELETE',
           headers: { 'X-CSRFToken': csrfToken || '' },
           credentials: 'include',

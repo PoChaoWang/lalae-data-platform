@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Users, Database, Calendar, User } from "lucide-react"
 
-const API_URL = `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/api/`;
+const API_URL = `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/`;
 
 export default function ClientList() {
   const [clients, setClients] = useState<Client[]>([]);

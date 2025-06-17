@@ -31,13 +31,13 @@ type Field = { name: string; display: string };
 type AvailableFields = { metrics: Field[]; segments: Field[]; attributes: Field[] };
 
 async function fetchResources(): Promise<Field[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/google-ads-resources/`, { credentials: 'include' });
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/google-ads-resources/`, { credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch resources');
     return res.json();
 }
 
 async function fetchCompatibleFields(resourceName: string): Promise<AvailableFields> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/get-compatible-google-ads-fields/?resource=${resourceName}`, {
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/get-compatible-google-ads-fields/?resource=${resourceName}`, {
         credentials: 'include',
     });
     if (!res.ok) throw new Error('Failed to fetch compatible fields');

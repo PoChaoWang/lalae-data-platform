@@ -567,7 +567,7 @@
                 loadingSpinner.style.display = 'block';
                 accordionContainer.innerHTML = '';
                 try {
-                    const response = await fetch(`{% url 'connections:api_get_compatible_google_ads_fields' %}?resource=${resourceName}`);
+                    const response = await fetch(`{% url 'connections:get_compatible_google_ads_fields' %}?resource=${resourceName}`);
                     if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
                     allAvailableFields = await response.json();
                     renderAvailableFields();

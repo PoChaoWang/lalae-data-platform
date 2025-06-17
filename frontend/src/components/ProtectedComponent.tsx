@@ -1,24 +1,22 @@
 // components/ProtectedComponent.tsx
 'use client';
 
-import { useAuth } from '@/lib/AuthContext';
-import { useRouter } from 'next/navigation'; // ✨ 使用 next/navigation
-import { useEffect } from 'react';
+import { useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import LoadingSpinner from './ui/LoadingSpinner';
 
 export default function ProtectedComponent({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
-    
-    if (!loading && !user?.isAuthenticated) {
-      // router.push('http://localhost:8000/users/login/');
-      router.push('https://98dd-114-24-81-73.ngrok-free.app/users/login/');
-    }
-  }, [user, loading, router]);
+  // 使用 useSession，並加入驗證選項
+  const { status } = useSession({
+    required: true, 
+    onUnauthenticated() {
+      router.push('/login'); 
+    },
+  });
 
-  if (loading) {
+  if (status === 'loading') {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <LoadingSpinner />
@@ -29,10 +27,5 @@ export default function ProtectedComponent({ children }: { children: React.React
     );
   }
 
-  
-  if (user?.isAuthenticated) {
-    return <>{children}</>;
-  }
-
-  return null;
+  return <>{children}</>;
 }

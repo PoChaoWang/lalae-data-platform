@@ -37,7 +37,7 @@ export default function ClientDetail() {
     const fetchClient = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/clients/api/${clientId}/`, {
+        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/`, {
           credentials: 'include', // 確保請求時攜帶 cookie
         });
 
@@ -60,7 +60,7 @@ export default function ClientDetail() {
 
     const fetchCsrfToken = async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/clients/api/csrf/`, {
+        const res = await fetch(`${API_BASE_URL}/clients/csrf/`, {
             credentials: 'include'
         });
         if (!res.ok) throw new Error('Failed to fetch CSRF token from server.');
@@ -89,7 +89,7 @@ export default function ClientDetail() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/clients/api/${client.id}/`, {
+      const response = await fetch(`${API_BASE_URL}/clients/${client.id}/`, {
         method: 'DELETE',
         headers: {
           'X-CSRFToken': csrfToken,

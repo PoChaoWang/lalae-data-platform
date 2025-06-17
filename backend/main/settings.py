@@ -43,7 +43,7 @@ GOOGLE_ADS_DEVELOPER_TOKEN = env("GOOGLE_ADS_DEVELOPER_TOKEN")
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET")
 
-FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="https://30e1-114-24-81-73.ngrok-free.app")
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
 
 if not GOOGLE_CLOUD_PROJECT_ID:
     raise ImproperlyConfigured(
@@ -78,7 +78,7 @@ ALLOWED_HOSTS = [
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-
+    'http://localhost:*',
     'https://4580-114-24-82-104.ngrok-free.app',
     'https://*.ngrok-free.app', 
 ]
@@ -99,6 +99,11 @@ INSTALLED_APPS = [
     "django.contrib.sites",
     # Rest Framework
     "rest_framework",
+    'rest_framework.authtoken',
+    'rest_framework_simplejwt', 
+    # Rest auth
+    'dj_rest_auth',
+    'dj_rest_auth.registration',
     # Allauth apps
     "allauth",
     "allauth.account",
@@ -163,6 +168,7 @@ DATABASES = {
         "PASSWORD": env("SUPABASE_DATABASE_PASSWORD"),
         "HOST": "aws-0-ap-southeast-1.pooler.supabase.com",
         "PORT": "5432",
+        'ATOMIC_REQUESTS': True,
     }
 }
 
@@ -199,7 +205,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [
-    BASE_DIR / "static",
+    BASE_DIR / "backend/static",
 ]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
@@ -213,14 +219,7 @@ LOGIN_REDIRECT_URL = FRONTEND_BASE_URL
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = "/users/login/"
 
-# Email Configuration
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"  # For development
-EMAIL_HOST = "smtp.gmail.com"  # For production
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = env("EMAIL_HOST_USER")
-EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
-DEFAULT_FROM_EMAIL = "noreply@example.com"  # 開發環境的默認發件人
+
 
 # Password Reset Timeout (in seconds)
 PASSWORD_RESET_TIMEOUT = 259200  # 3 days
@@ -256,12 +255,6 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
-LOGIN_REDIRECT_URL = "/"
-ACCOUNT_LOGOUT_REDIRECT_URL = "/"
-ACCOUNT_LOGIN_METHODS = ("email",)
-ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*", "password2*"]
-ACCOUNT_EMAIL_VERIFICATION = "optional"
-
 
 # Provider specific settings
 SOCIALACCOUNT_PROVIDERS = {
@@ -282,22 +275,70 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
-# Django Allauth settings
-ACCOUNT_AUTHENTICATION_METHOD = 'email' # 這一行仍然有效且常用
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_UNIQUE_EMAIL = True
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None # 不使用 username
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+# Signup Email Setting
+ACCOUNT_EMAIL_CONFIRMATION_HMAC = False
+# Email Configuration
+# EMAIL_BACKEND = "django.core.mail.backends.dummy.EmailBackend"
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"  # For production
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = env("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = "dark781228@gmail.com"
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = f'{FRONTEND_BASE_URL}/email-confirmed'
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = f'{FRONTEND_BASE_URL}/email-confirmed'
+
+ACCOUNT_ADAPTER = 'apps.users.adapters.CustomAccountAdapter'
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_SIGNUP_FIELDS = ['email*']
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
+ACCOUNT_LOGIN_METHODS = ['email']
+ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False
 ACCOUNT_LOGOUT_ON_GET = True
 SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
 SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_STORE_TOKENS = True
-
 SOCIALACCOUNT_ADAPTER = "allauth.socialaccount.adapter.DefaultSocialAccountAdapter"
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_CALLBACK_TEMPLATE = "connections/account/socialaccount_callback.html"
+ACCOUNT_USERNAME_REQUIRED = True
+
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+}
+
+REST_AUTH = {
+    'USE_JWT': True,
+    'JWT_AUTH_COOKIE': 'jwt-auth',
+    'JWT_AUTH_REFRESH_COOKIE': 'jwt-refresh-token',
+    'JWT_AUTH_HTTPONLY': False,
+    'USER_DETAILS_SERIALIZER': 'apps.users.serializers.UserSerializer',
+    'REGISTER_SERIALIZER': 'apps.users.serializers.CustomRegisterSerializer',
+}
+
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+}
 
 LOGGING = {
     "version": 1,
@@ -347,8 +388,8 @@ USE_X_FORWARDED_HOST = True
 CORS_ALLOWED_ORIGINS = [
     "https://30e1-114-24-81-73.ngrok-free.app",
     "http://127.0.0.1:3000",
+    "http://localhost:3000",
     "http://192.168.1.104:3000",
-    "https://30e1-114-24-81-73.ngrok-free.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -367,3 +408,5 @@ CSRF_TRUSTED_ORIGINS = [
 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
+
+

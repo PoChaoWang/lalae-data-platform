@@ -34,13 +34,13 @@ type FBField = { name: string; label: string };
 type AllFBFields = { [level: string]: { fields: FBField[], breakdowns: FBField[], action_breakdowns: FBField[] } };
 
 async function getAdAccounts(clientId: string): Promise<AdAccount[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/facebook-ad-accounts/?client_id=${clientId}`, { credentials: 'include' });
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-ad-accounts/?client_id=${clientId}`, { credentials: 'include' });
     if (!res.ok) return [];
     return res.json();
 }
 
 async function getAllFacebookFields(): Promise<AllFBFields> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/facebook-all-fields/`, { credentials: 'include' });
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-all-fields/`, { credentials: 'include' });
     if (!res.ok) {
         console.error(`Failed to fetch Facebook fields: ${res.status} ${res.statusText}`);
         return {};

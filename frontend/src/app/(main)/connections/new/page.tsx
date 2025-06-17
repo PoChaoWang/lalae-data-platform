@@ -3,6 +3,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useSession } from "next-auth/react";
+
 import SelectClientStep from '@/components/connections/SelectClientStep';
 import SelectDataSourceStep from '@/components/connections/SelectDataSourceStep';
 import ConnectionForm from '@/components/connections/ConnectionForm';
@@ -36,13 +38,13 @@ export default function NewConnectionPage() {
       try {
         if (cloneId) {
           // --- 處理複製邏輯 (最高優先級) ---
-          const connRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${cloneId}/`, { credentials: 'include' });
+          const connRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`, { credentials: 'include' });
           if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
           const clonedConnectionData: Connection = await connRes.json();
 
           const fullClientId = clonedConnectionData.client.id;
 
-          const fullClientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/${fullClientId}/`, { 
+          const fullClientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${fullClientId}/`, { 
             credentials: 'include',
             cache: 'no-store' 
           });
@@ -59,7 +61,7 @@ export default function NewConnectionPage() {
 
         } else if (clientId) {
           // --- 處理正常的分步流程 ---
-          const clientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/${clientId}/`, { 
+          const clientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${clientId}/`, { 
               credentials: 'include',
               cache: 'no-store'
           });
@@ -68,7 +70,7 @@ export default function NewConnectionPage() {
           setSelectedClient(clientData); 
 
           if (stepParam === '3' && dataSourceName) {
-            const dataSourceRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/datasources/${dataSourceName}/`, {
+            const dataSourceRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/${dataSourceName}/`, {
                 credentials: 'include',
                 cache: 'no-store'
             });

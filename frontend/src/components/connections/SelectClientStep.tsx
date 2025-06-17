@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"; // Make sure you have this ShadCN
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
 async function getClients(): Promise<SelectableClient[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/clients/`, {
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/`, {
         cache: 'no-store',
         credentials: 'include'
     });

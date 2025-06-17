@@ -37,11 +37,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 // Please change the URL in the env.local file if you need
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-export default function ConnectionList() {
+interface ConnectionListProps {
+    connections: Connection[] | null;
+    isLoading: boolean;
+    error: string | null;
+  }
+
+export default function ConnectionList({ connections, isLoading, error }: ConnectionListProps) {
   const router = useRouter();
-  const [connections, setConnections] = useState<Connection[]>([]);
+//   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+//   const [error, setError] = useState<string | null>(null);
 
   const [expandedConnectionId, setExpandedConnectionId] = useState<number | null>(null);
   const [history, setHistory] = useState<ConnectionExecution[]>([]);
@@ -136,37 +142,15 @@ export default function ConnectionList() {
 
   // --- NEW: TanStack Table Instance ---
   const table = useReactTable({
-      data: connections,
-      columns,
-      getCoreRowModel: getCoreRowModel(),
-      enableColumnResizing: true, // Enable the resizing feature
-      columnResizeMode: 'onChange', // 'onChange' is smoother than 'onEnd'
-      getRowId: (row) => String(row.id), // Use connection ID as the unique row ID
-  });
+    data: connections ?? [],
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
+    getRowId: (row) => String(row.id),
+});
 
-  useEffect(() => {
-    const fetchConnections = async () => {
-      try {
-        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/`, {
-          credentials: 'include',
-        });
-        if (!res.ok) {
-          if (res.status === 403) {
-            throw new Error('Authentication failed. Please log in to your Django admin and try again.');
-          }
-          throw new Error(`Failed to fetch connections: ${res.statusText}`);
-        }
-        const data = await res.json();
-        setConnections(data);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
 
-    fetchConnections();
-  }, []);
 
   const handleToggleExpand = async (connectionId: number) => {
     if (expandedConnectionId === connectionId) {
@@ -180,7 +164,7 @@ export default function ConnectionList() {
     setHistory([]);
 
     try {
-        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${connectionId}/executions/`, {
+        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/executions/`, {
             credentials: 'include',
         });
         if (!res.ok) {
@@ -223,7 +207,7 @@ export default function ConnectionList() {
   };
 
   // --- Loading State Placeholder ---
-  if (loading) return (
+  if (isLoading) return (
     <div className="bg-gray-800/30 backdrop-blur-sm border border-orange-500/20 rounded-2xl overflow-hidden">
          <table className="w-full">
             <thead className="border-b border-gray-700/50">

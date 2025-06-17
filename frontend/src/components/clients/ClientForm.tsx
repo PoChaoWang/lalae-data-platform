@@ -33,7 +33,7 @@ export default function ClientForm({
   useEffect(() => {
     const fetchCsrfToken = async () => {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/api/csrf/`, {
+          const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/csrf/`, {
               credentials: 'include'
           });
           if (!res.ok) {
@@ -71,8 +71,8 @@ export default function ClientForm({
       }
 
     const apiUrl = isEditMode
-      ? `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/api/${initialData.id}/`
-      : `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/api/`
+      ? `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/${initialData.id}/`
+      : `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/`
     const method = isEditMode ? "PUT" : "POST"
 
     try {

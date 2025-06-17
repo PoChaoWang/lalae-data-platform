@@ -54,7 +54,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
     if (cloneFromId) {
       const fetchConnectionToClone = async (id: string) => {
         try {
-          const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/${id}/`, {
+          const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${id}/`, {
             credentials: 'include',
           });
           if (!res.ok) {
@@ -88,7 +88,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   useEffect(() => {
     const fetchCsrfToken = async () => {
       try {
-        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/get-csrf-token/`, {
+        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/get-csrf-token/`, {
           credentials: 'include', // 確保 sessionid cookie 被發送，Django 才能生成對應的 CSRF token
         });
         if (!res.ok) throw new Error('Failed to fetch CSRF token');
@@ -196,7 +196,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
     };
 
     try {
-      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/connections/`, {
+      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/`, {
         method: 'POST',
         headers: headers,
         body: JSON.stringify(payload),

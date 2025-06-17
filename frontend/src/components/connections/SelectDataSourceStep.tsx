@@ -36,7 +36,7 @@ const GoogleSheetIcon = () => (
 );
 
 async function getDataSources(): Promise<DataSource[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/api/datasources/`, {
+    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/`, {
         cache: 'no-store',
         credentials: 'include'
     });

@@ -3,14 +3,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useAuth } from '@/lib/AuthContext';
+import { useSession, signIn, signOut } from 'next-auth/react';
+import { Button } from "@/components/ui/button"
 import { useState, useEffect } from 'react';
 // 引入 landing page 使用的 icons
 import { Globe, User, ChevronDown } from 'lucide-react';
 const backendUrl = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
 
 export default function AppNavbar() {
-    const { user, loading } = useAuth();
+    const { data: session, status } = useSession();
     const [isClient, setIsClient] = useState(false);
     
     // 控制手機版選單的展開/摺疊狀態
@@ -26,7 +27,7 @@ export default function AppNavbar() {
     };
 
     // 在 loading 或 isClient 為 false 時，都顯示精簡版 Navbar
-    if (loading || !isClient) {
+    if (status === 'loading' || !isClient) {
         return (
             <header className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur-sm border-b border-orange-500/20">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
@@ -59,7 +60,7 @@ export default function AppNavbar() {
 
                     {/* 桌面版選單 - 中心 */}
                     <nav className="hidden lg:flex items-center space-x-2">
-                        {user?.isAuthenticated && (
+                        {status === 'authenticated' && (
                             <>
                                 <Link href="/dashboard" className={navLinkClasses}>Dashboard<span className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-500 group-hover:w-full transition-all duration-300" /></Link>
                                 <Link href="/clients" className={navLinkClasses}>Clients<span className="absolute bottom-0 left-0 w-0 h-0.5 bg-orange-500 group-hover:w-full transition-all duration-300" /></Link>
@@ -72,27 +73,28 @@ export default function AppNavbar() {
 
                     {/* 桌面版選單 - 右側 */}
                     <div className="hidden lg:flex items-center space-x-4">
-                        {user?.isAuthenticated ? (
+                        {status === 'authenticated' ? (
                             <>
-                                
                                 <div className="flex items-center space-x-3">
                                     <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
                                         <User className="w-4 h-4 text-black" />
                                     </div>
-                                    <span className="text-gray-300 text-sm font-medium">{user.username}</span>
+                                    <span className="text-gray-300 text-sm font-medium">{session.user?.email}</span>
                                 </div>
-                                <a href={`${backendUrl}/users/logout/`} className="text-gray-400 hover:text-orange-400 transition-colors duration-300 text-sm font-medium">
+                                <Button variant="ghost" onClick={() => signOut({ callbackUrl: '/' })} className="text-gray-400 hover:text-orange-400 transition-colors duration-300 text-sm font-medium">
                                     Logout
-                                </a>
+                                </Button>
                             </>
                         ) : (
                             <>
-                                <a href={`${backendUrl}/users/login/`} className="text-gray-300 hover:text-orange-400 transition-colors duration-300 font-semibold text-sm">
+                                <Button variant="ghost" onClick={() => signIn()} className="text-gray-300 hover:text-orange-400 transition-colors duration-300 font-semibold text-sm">
                                   Login
-                                </a>
-                                <a href={`${backendUrl}/users/register/`} className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-5 py-2 rounded-lg shadow-lg hover:shadow-orange-500/25 transition-all duration-300 hover:scale-105 text-sm">
-                                  Register
-                                </a>
+                                </Button>
+                                <Link href="/register">
+                                  <Button className="bg-orange-500 hover:bg-orange-600 text-black font-semibold px-5 py-2 rounded-lg shadow-lg hover:shadow-orange-500/25 transition-all duration-300 hover:scale-105 text-sm">
+                                    Register
+                                  </Button>
+                                </Link>
                             </>
                         )}
                     </div>
@@ -111,7 +113,7 @@ export default function AppNavbar() {
             {/* 手機版展開選單 */}
             <div className={`${isOpen ? 'block' : 'hidden'} lg:hidden border-t border-orange-500/20`} id="mobile-menu">
                 <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3" onClick={handleLinkClick}>
-                    {user?.isAuthenticated && (
+                    {status === 'authenticated' && (
                         <>
                             <Link href="/dashboard" className={mobileNavLinkClasses}>Dashboard</Link>
                             <Link href="/clients" className={mobileNavLinkClasses}>Clients</Link>
@@ -122,23 +124,23 @@ export default function AppNavbar() {
                     <Link href="/about" className={mobileNavLinkClasses}>About</Link>
                     
                     <div className="pt-4 pb-3 border-t border-gray-700">
-                        {user?.isAuthenticated ? (
+                        {status === 'authenticated' ? (
                             <>
                                 <div className="flex items-center px-3 mb-3">
                                     <div className="flex-shrink-0 w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
                                         <User className="w-5 h-5 text-black" />
                                     </div>
                                     <div className="ml-3">
-                                        <div className="text-base font-medium leading-none text-white">{user.username}</div>
+                                        <div className="text-base font-medium leading-none text-white">{session.user?.username}</div>
                                         {/* <div className="text-sm font-medium leading-none text-gray-400 mt-1">{user.email || '...'}</div>     */}
                                     </div>
                                 </div>
-                                <a href={`${backendUrl}/users/logout/`} className={mobileNavLinkClasses}>Logout</a>
+                                <button onClick={() => signOut({ callbackUrl: '/' })}  className={`${mobileNavLinkClasses} w-full text-left`}>Logout</button>
                             </>
                         ) : (
                             <div className="space-y-1">
-                                <a href={`${backendUrl}/users/login/`} className={mobileNavLinkClasses}>Login</a>
-                                <a href={`${backendUrl}/users/register/`} className={mobileNavLinkClasses}>Register</a>
+                                <button onClick={() => signIn()} className={`${mobileNavLinkClasses} w-full text-left`}>Login</button>
+                                <Link href="/register" className={mobileNavLinkClasses}>Register</Link>
                             </div>
                         )}
                     </div>

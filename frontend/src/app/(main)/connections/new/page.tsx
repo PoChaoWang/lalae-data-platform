@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from "next-auth/react";
-
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 import SelectClientStep from '@/components/connections/SelectClientStep';
 import SelectDataSourceStep from '@/components/connections/SelectDataSourceStep';
 import ConnectionForm from '@/components/connections/ConnectionForm';
@@ -21,6 +21,7 @@ export default function NewConnectionPage() {
     const [selectedClient, setSelectedClient] = useState<SelectableClient | null>(null);
     const [selectedDataSource, setSelectedDataSource] = useState<DataSource | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const { protectedFetch } = useProtectedFetch();
 
   const [initialDataForForm, setInitialDataForForm] = useState<{
     displayName: string;
@@ -29,6 +30,9 @@ export default function NewConnectionPage() {
 
   useEffect(() => {
     const initializePage = async () => {
+      if (!protectedFetch) {
+        return;
+      }
       setIsLoading(true);
       const cloneId = searchParams.get('cloneFrom');
       const stepParam = searchParams.get('step');
@@ -38,14 +42,13 @@ export default function NewConnectionPage() {
       try {
         if (cloneId) {
           // --- 處理複製邏輯 (最高優先級) ---
-          const connRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`, { credentials: 'include' });
+          const connRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`);
           if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
           const clonedConnectionData: Connection = await connRes.json();
 
           const fullClientId = clonedConnectionData.client.id;
 
-          const fullClientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${fullClientId}/`, { 
-            credentials: 'include',
+          const fullClientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${fullClientId}/`, { 
             cache: 'no-store' 
           });
           if (!fullClientRes.ok) throw new Error('Failed to fetch full client details.');
@@ -60,18 +63,18 @@ export default function NewConnectionPage() {
           setStep(3); // 直接跳到第三步
 
         } else if (clientId) {
-          // --- 處理正常的分步流程 ---
-          const clientRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${clientId}/`, { 
-              credentials: 'include',
-              cache: 'no-store'
-          });
-          if (!clientRes.ok) throw new Error('Failed to fetch client data.');
-          const clientData: SelectableClient = await clientRes.json();
-          setSelectedClient(clientData); 
+          if (!selectedClient) {
+            // 如果使用者是透過直接貼上 URL 進來的，我們還是需要 fetch 一次
+            const clientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/{clientId}/`, { 
+                cache: 'no-store'
+            });
+            if (!clientRes.ok) throw new Error('Failed to fetch client data.');
+            const clientData: SelectableClient = await clientRes.json();
+            setSelectedClient(clientData);
+            }
 
           if (stepParam === '3' && dataSourceName) {
-            const dataSourceRes = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/${dataSourceName}/`, {
-                credentials: 'include',
+            const dataSourceRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/${dataSourceName}/`, {
                 cache: 'no-store'
             });
             if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');
@@ -96,9 +99,10 @@ export default function NewConnectionPage() {
     };
 
     initializePage();
-  }, [searchParams, router]);
+  }, [searchParams, router, protectedFetch, selectedClient]);
 
   const handleClientSelect = (client: SelectableClient) => {
+    setSelectedClient(client);
     router.push(`/connections/new?step=2&client_id=${client.id}`);
 };
 

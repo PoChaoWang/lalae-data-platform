@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import type { DataSource } from '@/lib/definitions';
 import ProtectedComponent from '@/components/ProtectedComponent';
 import { Check, AlertTriangle } from 'lucide-react';
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
@@ -35,14 +36,14 @@ const GoogleSheetIcon = () => (
     </svg>
 );
 
-async function getDataSources(): Promise<DataSource[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/`, {
-        cache: 'no-store',
-        credentials: 'include'
-    });
-    if (!res.ok) throw new Error('Failed to fetch data sources');
-    return res.json();
-}
+// async function getDataSources(): Promise<DataSource[]> {
+//     const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/`, {
+//         cache: 'no-store',
+//         credentials: 'include'
+//     });
+//     if (!res.ok) throw new Error('Failed to fetch data sources');
+//     return res.json();
+// }
 
 const getSourceStyle = (sourceName: string) => {
     if (sourceName.includes('GOOGLE_ADS')) return { logo: GoogleIcon, color: 'blue' };
@@ -58,16 +59,27 @@ export default function SelectDataSourceStep({
     onDataSourceSelect: (dataSource: DataSource) => void;
     selectedDataSource: DataSource | null;
 }) {
+    const { protectedFetch } = useProtectedFetch();
     const [dataSources, setDataSources] = useState<DataSource[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        getDataSources()
-            .then(setDataSources)
-            .catch(err => setError(err.message))
-            .finally(() => setLoading(false));
-    }, []);
+        const fetchDataSources = async () => {
+            if (!protectedFetch) return; // 防衛
+            try {
+                const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/`);
+                if (!res.ok) throw new Error('Failed to fetch data sources');
+                const data = await res.json();
+                setDataSources(data);
+            } catch (err: any) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDataSources();
+    }, [protectedFetch]); 
 
     // --- UI from Wizard with Loading/Error States ---
     if (loading) {

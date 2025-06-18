@@ -11,6 +11,9 @@ from allauth.account.views import ConfirmEmailView
 from allauth.account.models import EmailConfirmation
 from django.http import JsonResponse
 from .serializers import UserSerializer
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+from dj_rest_auth.registration.views import SocialLoginView
 import os
 import logging
 
@@ -18,44 +21,44 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-@api_view(['POST'])
-@permission_classes([AllowAny]) # 允許任何請求訪問，因為這是登入/註冊流程的一部分
-def social_auth_view(request):
-    """
-    處理來自前端的社交媒體登入請求 (Google, etc.)
-    """
-    email = request.data.get('email')
-    full_name = request.data.get('full_name')
+# @api_view(['POST'])
+# @permission_classes([AllowAny]) # 允許任何請求訪問，因為這是登入/註冊流程的一部分
+# def social_auth_view(request):
+#     """
+#     處理來自前端的社交媒體登入請求 (Google, etc.)
+#     """
+#     email = request.data.get('email')
+#     full_name = request.data.get('full_name')
 
-    if not email:
-        return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+#     if not email:
+#         return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 使用 get_or_create 查找或建立使用者
-    # defaults 參數只會在建立新物件時生效
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            'username': email.split('@')[0], # 使用 email 前綴作為預設 username
-            'first_name': full_name.split(' ')[0] if full_name else '',
-        }
-    )
+#     # 使用 get_or_create 查找或建立使用者
+#     # defaults 參數只會在建立新物件時生效
+#     user, created = User.objects.get_or_create(
+#         email=email,
+#         defaults={
+#             'username': email.split('@')[0], # 使用 email 前綴作為預設 username
+#             'first_name': full_name.split(' ')[0] if full_name else '',
+#         }
+#     )
 
-    if created:
-        # 如果是新建立的使用者，設定一個不可用的密碼
-        user.set_unusable_password()
-        user.save()
+#     if created:
+#         # 如果是新建立的使用者，設定一個不可用的密碼
+#         user.set_unusable_password()
+#         user.save()
 
-    # 為使用者產生 JWT tokens
-    refresh = RefreshToken.for_user(user)
+#     # 為使用者產生 JWT tokens
+#     refresh = RefreshToken.for_user(user)
 
-    # 準備回傳給前端的資料
-    user_data = UserSerializer(user).data
+#     # 準備回傳給前端的資料
+#     user_data = UserSerializer(user).data
     
-    return Response({
-        'user': user_data,
-        'access_token': str(refresh.access_token),
-        'refresh_token': str(refresh),
-    }, status=status.HTTP_200_OK)
+#     return Response({
+#         'user': user_data,
+#         'access_token': str(refresh.access_token),
+#         'refresh_token': str(refresh),
+#     }, status=status.HTTP_200_OK)
 
 class CustomConfirmEmailView(ConfirmEmailView):
     def get(self, request, *args, **kwargs):
@@ -133,3 +136,9 @@ class UserProfileView(APIView):
     def get(self, request):
         serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class GoogleLogin(SocialLoginView):
+    adapter_class = GoogleOAuth2Adapter
+    # callback_url 不需要在此處設定，因為我們是從客戶端直接發送 token
+    client_class = OAuth2Client
+

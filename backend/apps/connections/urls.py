@@ -8,14 +8,14 @@ from .views import GoogleOAuth2CustomCallbackView
 router = DefaultRouter()
 # router.register(r'connections', views.ConnectionViewSet, basename='connection')
 # router.register(r'clients', views.ClientViewSet, basename='connection-client')
-# router.register(r'datasources', views.DataSourceViewSet, basename='connection-datasource')
+router.register(r'datasources', views.DataSourceViewSet, basename='connection-datasource')
 router.register(r'', views.ConnectionViewSet, basename='connection')
 
 app_name = "connections"  # 為 URL 名稱加上命名空間，方便在模板中引用
 
 urlpatterns = [
     # For Frontend
-    path("", include(router.urls)),
+    
     path("google-ads-resources/", views.get_google_ads_resources, name="get_google_ads_resources"),
     path("facebook-ad-accounts/", views.get_facebook_ad_accounts, name="get_facebook_ad_accounts"),
     path("facebook-all-fields/", views.get_facebook_all_fields, name="get_facebook_all_fields"),
@@ -31,6 +31,7 @@ urlpatterns = [
     ),
     path('facebook/oauth/callback/', views.facebook_oauth_callback, name='facebook_oauth_callback'),
     path("check-auth-status/", views.check_auth_status, name="check_auth_status"),
+    path("", include(router.urls)),
 
     # # For Backend
     # path("", views.ConnectionListView.as_view(), name="connection_list"),

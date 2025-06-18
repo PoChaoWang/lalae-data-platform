@@ -6,17 +6,18 @@ import type { SelectableClient } from '@/lib/definitions';
 import ProtectedComponent from '@/components/ProtectedComponent';
 import { AlertTriangle, Search, Check } from 'lucide-react';
 import { Input } from "@/components/ui/input"; // Make sure you have this ShadCN component
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-async function getClients(): Promise<SelectableClient[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/`, {
-        cache: 'no-store',
-        credentials: 'include'
-    });
-    if (!res.ok) throw new Error('Failed to fetch clients');
-    return res.json();
-}
+// async function getClients(): Promise<SelectableClient[]> {
+//     const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/`, {
+//         cache: 'no-store',
+//         credentials: 'include'
+//     });
+//     if (!res.ok) throw new Error('Failed to fetch clients');
+//     return res.json();
+// }
 
 export default function SelectClientStep({
     onClientSelect,
@@ -25,17 +26,38 @@ export default function SelectClientStep({
     onClientSelect: (client: SelectableClient) => void;
     selectedClient: SelectableClient | null;
 }) {
+    const { protectedFetch } = useProtectedFetch();
+
     const [clients, setClients] = useState<SelectableClient[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    
 
     useEffect(() => {
-        getClients()
-            .then(setClients)
-            .catch(err => setError(err.message))
-            .finally(() => setLoading(false));
-    }, []);
+        // 4. 將 fetch 邏輯放在 useEffect 內部
+        const fetchClients = async () => {
+            // 防衛敘述：確保 protectedFetch 已經準備好
+            if (!protectedFetch) return;
+
+            try {
+                const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/`);
+                
+                if (!res.ok) {
+                    const errorData = await res.json().catch(() => ({ message: 'Failed to fetch clients' }));
+                    throw new Error(errorData.detail || errorData.message);
+                }
+                const data = await res.json();
+                setClients(data);
+            } catch (err: any) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchClients();
+    }, [protectedFetch]);
 
     const filteredClients = clients.filter((client) =>
         client.name.toLowerCase().includes(searchTerm.toLowerCase())

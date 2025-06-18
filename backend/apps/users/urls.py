@@ -11,7 +11,7 @@ NEXTJS_APP_URL = os.environ.get('FRONTEND_BASE_URL')
 urlpatterns = [
     path('', include('dj_rest_auth.urls')),
     # 社交媒體登入 (Google)，指向我們的 API view
-    path('social-auth/', views.social_auth_view, name='social-auth'),
+    path('social-auth/', views.GoogleLogin.as_view(), name='social-auth'),
 
     path('register/verify-email/<str:key>/', 
          views.CustomConfirmEmailView.as_view(),

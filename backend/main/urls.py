@@ -4,6 +4,10 @@ from django.contrib import admin
 from django.urls import path, include
 from django.shortcuts import redirect
 from . import views
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView, 
+)
 
 def email_confirm_redirect(request, key):
     try:
@@ -40,6 +44,9 @@ urlpatterns = [
     path('auth/register/account-confirm-email/<str:key>/', 
          email_confirm_redirect, 
          name='account_confirm_email'),
+
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
 
     path('', views.home, name='home'),
     path('about/', views.about, name='about'),

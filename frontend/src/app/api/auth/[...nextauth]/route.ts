@@ -106,24 +106,50 @@ export const authOptions: AuthOptions = {
 
   callbacks: {
     async jwt({ token, user, account }) {
-      // 初次登入時，user 物件會存在
+      // 'account' 和 'user' 只在初次登入時可用
       if (account && user) {
-          // 【關鍵日誌】確認從 authorize 傳來的 user 物件內容
-          console.log('--- [JWT-CREDENTIALS] User object received:', JSON.stringify(user, null, 2));
-  
-          // 回傳一個全新的物件，取代原本的 token
-          return {
-              ...token, // 保留原始 token 的 iat, exp 等屬性
-              accessToken: user.access_token,
-              refreshToken: user.refresh_token,
-              user: user.user,
-          };
+        // 判斷登入提供者
+        switch (account.provider) {
+          
+          case 'credentials':
+            // 只有當使用帳號密碼登入時，才從 user 物件中提取 Django token
+            console.log('--- [JWT] Credentials login detected. Populating Django tokens.');
+            token.accessToken = user.access_token;
+            token.refreshToken = user.refresh_token;
+            token.user = user.user; // 保存從 Django 來的詳細使用者資料
+            break;
+
+            case 'google':
+              console.log('--- [JWT] Google login. Exchanging token with Django backend.');
+              try {
+                  // 使用你剛剛建立的後端端點
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/social-auth/`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      // dj-rest-auth 預設接收 access_token，但也可以設定為接收 id_token
+                      // 我們傳遞從 Google 拿到的 id_token 給後端
+                      body: JSON.stringify({ access_token: account.id_token }),
+                  });
+
+                  if (res.ok) {
+                      const djangoTokens = await res.json();
+                      console.log('--- [JWT] Successfully exchanged Google token for Django JWT.');
+                      // 將後端回傳的 Django JWT 存入 next-auth 的 token
+                      token.accessToken = djangoTokens.access;
+                      token.refreshToken = djangoTokens.refresh;
+                      token.user = djangoTokens.user;
+                  } else {
+                      const errorData = await res.json();
+                      console.error('--- [JWT] Django backend token exchange failed:', errorData);
+                  }
+              } catch (error) {
+                  console.error('--- [JWT] Error during token exchange with backend:', error);
+              }
+              break;
       }
-  
-      // 對於後續的請求 (user 物件不存在時)，直接回傳從 cookie 來的 token
-      // 這樣就不會觸發 user is undefined 的錯誤
-      return token;
-  },
+  }
+  return token;
+},
     
     async session({ session, token }) {
         // ▼▼▼ DEBUG LOG ▼▼▼

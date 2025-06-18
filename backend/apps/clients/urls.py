@@ -7,13 +7,13 @@ app_name = 'clients'
 
 # -- API Router --
 router = DefaultRouter()
-router.register(r'', views.ClientViewSet, basename='client-api')
+router.register(r'', views.ClientViewSet, basename='client')
 
 
 urlpatterns = [
     # --- API Path ---
-    path('', include(router.urls), name='client-list'),
-    path('csrf/', views.get_csrf_token, name='api-csrf'),
+    path('', include(router.urls)),
+
     
     # path('', views.ClientListView.as_view(), name='client-list'),
     # path('new/', views.ClientCreateView.as_view(), name='client-create'),

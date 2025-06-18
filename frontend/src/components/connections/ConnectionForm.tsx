@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Clock, Zap, LogIn } from "lucide-react";
-
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 
 // Pleae change the URL in the env.local file if you need
 // const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
@@ -20,203 +20,125 @@ const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 type AuthStatus = 'loading' | 'authorized' | 'not-authorized';
 
 export default function ConnectionForm({ client, dataSource }: { client: SelectableClient; dataSource: DataSource; }) {
+  const { protectedFetch } = useProtectedFetch();
   const router = useRouter();
   const pathname = usePathname(); 
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [authIdentifier, setAuthIdentifier] = useState<string>('');
   
-  const [formData, setFormData] = useState(() => {
-    // 嘗試從 URL 參數中解析資料
-    const clonedConfigString = searchParams.get('config');
-    const clonedConfig = clonedConfigString ? JSON.parse(clonedConfigString) : {};
-
-    const displayName = searchParams.get('display_name') || '';
-
-    return {
-      display_name: displayName,
-      target_dataset_id: client.bigquery_dataset_id || '',
-      sync_frequency: clonedConfig.sync_frequency || 'Daily',
-      sync_hour: clonedConfig.sync_hour || '00',
-      sync_minute: clonedConfig.sync_minute || '00',
-      weekly_day_of_week: clonedConfig.weekly_day_of_week || '1',
-      monthly_day_of_month: clonedConfig.monthly_day_of_month || 1,
-      config: clonedConfig, 
-    };
+  const [formData, setFormData] = useState({
+    display_name: '',
+    target_dataset_id: client.bigquery_dataset_id || '',
+    sync_frequency: 'Daily',
+    sync_hour: '00',
+    sync_minute: '00',
+    weekly_day_of_week: '1',
+    monthly_day_of_month: 1,
+    config: {},
   });
 
   useEffect(() => {
-    const cloneFromId = searchParams.get('cloneFrom');
-    if (cloneFromId) {
-      const fetchConnectionToClone = async (id: string) => {
-        try {
-          const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${id}/`, {
-            credentials: 'include',
-          });
-          if (!res.ok) {
-            throw new Error(`Failed to fetch connection data (ID: ${id}) for cloning.`);
-          }
-          const connectionToClone = await res.json();
-
-          // 使用獲取到的資料來設定表單的初始值
-          setFormData(prev => ({
-            ...prev,
-            display_name: `${connectionToClone.display_name} (Copy)`,
-            // Sync schedule
-            sync_frequency: connectionToClone.config.sync_frequency || 'daily',
-            sync_hour: connectionToClone.config.sync_hour || '00',
-            sync_minute: connectionToClone.config.sync_minute || '00',
-            weekly_day_of_week: connectionToClone.config.weekly_day_of_week || '1',
-            monthly_day_of_month: connectionToClone.config.monthly_day_of_month || 1,
-            // 最重要的部分：將獲取到的 config 設定到 state 中
-            config: connectionToClone.config || {},
-          }));
-
-        } catch (err: any) {
-          console.error(err);
-          setError(`Could not load data for cloning: ${err.message}`);
-        }
-      };
-      fetchConnectionToClone(cloneFromId);
-    }
-  }, [searchParams]); 
-
-  useEffect(() => {
-    const fetchCsrfToken = async () => {
+    const initializeFromClone = async (id: string) => {
+      if (!protectedFetch) return;
       try {
-        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/get-csrf-token/`, {
-          credentials: 'include', // 確保 sessionid cookie 被發送，Django 才能生成對應的 CSRF token
-        });
-        if (!res.ok) throw new Error('Failed to fetch CSRF token');
+        const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${id}/`);
+        if (!res.ok) throw new Error(`Failed to fetch connection data (ID: ${id}) for cloning.`);
         const data = await res.json();
-        setCsrfToken(data.csrfToken); // 將 token 存入 state
-      } catch (e) {
-        console.error("Could not fetch CSRF token:", e);
-        setError("Could not initialize security token. Please refresh the page.");
+        setFormData({
+          display_name: `${data.display_name} (Copy)`,
+          target_dataset_id: client.bigquery_dataset_id || '',
+          sync_frequency: data.config.sync_frequency || 'Daily',
+          sync_hour: data.config.sync_hour || '00',
+          sync_minute: data.config.sync_minute || '00',
+          weekly_day_of_week: data.config.weekly_day_of_week || '1',
+          monthly_day_of_month: data.config.monthly_day_of_month || 1,
+          config: data.config || {},
+        });
+      } catch (err: any) {
+        setError(`Could not load data for cloning: ${err.message}`);
       }
     };
 
-    fetchCsrfToken();
-  }, []);
+    const cloneFromId = searchParams.get('cloneFrom');
+    if (cloneFromId) {
+      initializeFromClone(cloneFromId);
+    }
+  }, [searchParams, client.bigquery_dataset_id, protectedFetch]);
 
   useEffect(() => {
     const checkAuthStatus = async () => {
-      // 如果不是需要 OAuth 的資料源，則直接設為已授權
+      if (!protectedFetch) return;
       if (dataSource.name !== 'GOOGLE_ADS' && dataSource.name !== 'FACEBOOK_ADS') {
         setAuthStatus('authorized');
         return;
       }
-      
-      if (dataSource.name === 'GOOGLE_ADS') {
-        try {
-          const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/check-auth-status/?client_id=${client.id}`, { 
-            credentials: 'include',
-            cache: 'no-store' 
-          });
+      try {
+        if (dataSource.name === 'GOOGLE_ADS') {
+          const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/check-auth-status/?client_id=${client.id}`, { cache: 'no-store' });
           if (!res.ok) throw new Error('Failed to fetch auth status');
           const data = await res.json();
-          if (data.is_authorized) {
+          setAuthStatus(data.is_authorized ? 'authorized' : 'not-authorized');
+          if (data.is_authorized) setAuthIdentifier(data.email);
+        } else if (dataSource.name === 'FACEBOOK_ADS') {
+          if (client.facebook_social_account) {
             setAuthStatus('authorized');
-            setAuthIdentifier(data.email);
+            setAuthIdentifier(client.facebook_social_account.name);
           } else {
             setAuthStatus('not-authorized');
           }
-        } catch (e) {
-          console.error(e);
-          setAuthStatus('not-authorized');
         }
-      } else if (dataSource.name === 'FACEBOOK_ADS') {
-        // Facebook 的狀態可以直接從 client 物件判斷 (假設它被傳遞了)
-        // 這需要確保載入頁面的 API 有回傳 client.facebook_social_account
-        if (client.facebook_social_account) {
-            setAuthStatus('authorized');
-            // 'extra_data' 的結構可能需要調整
-            setAuthIdentifier(client.facebook_social_account.name);
-        } else {
-            setAuthStatus('not-authorized');
-        }
+      } catch (e) {
+        setAuthStatus('not-authorized');
       }
     };
     checkAuthStatus();
-  }, [client.id, client.facebook_social_account, dataSource.name]);
-
+  }, [client, dataSource.name, protectedFetch]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    const parsedValue = type === 'number' ? parseInt(value, 10) : value;
-    setFormData(prev => ({ ...prev, [name]: parsedValue }));
+    setFormData(prev => ({ ...prev, [name]: type === 'number' ? parseInt(value, 10) : value }));
   };
-  
+
   const handleConfigChange = useCallback((configUpdate: object) => {
-    setFormData(prev => ({
-        ...prev,
-        config: { ...prev.config, ...configUpdate }
-    }));
+    setFormData(prev => ({ ...prev, config: { ...prev.config, ...configUpdate } }));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
-    setError(null);
-
+    if (!protectedFetch) {
+      setError("Authentication service unavailable.");
+      return;
+    }
     if (authStatus !== 'authorized') {
       setError('Please authorize the account before creating the connection.');
-      window.scrollTo(0, 0);
       return;
     }
-
-    if (!csrfToken) {
-      setError("Security token is missing. Cannot submit the form.");
-      setIsSubmitting(false);
-      return;
-    }
-    
-    const headers = new Headers({
-        'Content-Type': 'application/json',
-        'X-CSRFToken': csrfToken // 使用 state 中的 token
-    });
-    
+    setIsSubmitting(true);
+    setError(null);
     const payload = {
-        display_name: formData.display_name,
-        target_dataset_id: formData.target_dataset_id,
-        client_id: client.id,
-        data_source_id: dataSource.id,
-        config: {
-            ...formData.config,
-            sync_frequency: formData.sync_frequency,
-            sync_hour: formData.sync_hour,
-            sync_minute: formData.sync_minute,
-            weekly_day_of_week: formData.weekly_day_of_week,
-            monthly_day_of_month: formData.monthly_day_of_month,
-        }
+      display_name: formData.display_name,
+      target_dataset_id: formData.target_dataset_id,
+      client_id: client.id,
+      data_source_id: dataSource.id,
+      config: { ...formData.config, sync_frequency: formData.sync_frequency, sync_hour: formData.sync_hour, sync_minute: formData.sync_minute, weekly_day_of_week: formData.weekly_day_of_week, monthly_day_of_month: formData.monthly_day_of_month },
     };
-
     try {
-      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/`, {
+      const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/`, {
         method: 'POST',
-        headers: headers,
         body: JSON.stringify(payload),
-        credentials: 'include',
       });
-
       if (!res.ok) {
         const errorData = await res.json();
-        if (res.status === 403) {
-             throw new Error('CSRF Verification Failed. Please refresh the page and try again.');
-        }
         const errorMessages = Object.entries(errorData).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('; ');
         throw new Error(errorMessages || 'Failed to create connection');
       }
-
       const newConnection = await res.json();
       router.push(`/connections/${newConnection.id}`);
     } catch (err: any) {
       setError(err.message);
-      window.scrollTo(0, 0);
     } finally {
       setIsSubmitting(false);
     }
@@ -225,9 +147,7 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   const handleAuthorize = () => {
     const fullPath = pathname + '?' + searchParams.toString();
     localStorage.setItem('oauth_redirect_path', fullPath);
-    const encodedRedirectPath = encodeURIComponent(fullPath);
-    
-    const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}?data_source=${dataSource.name}&redirect_uri=${encodedRedirectPath}`;
+    const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}/?data_source=${dataSource.name}&redirect_uri=${encodeURIComponent(fullPath)}`;    
     window.location.href = authUrl;
   };
 

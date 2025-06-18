@@ -12,6 +12,7 @@ from rest_framework import viewsets, permissions
 from .serializers import ClientSerializer
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.http import JsonResponse, HttpResponse
+from rest_framework_simplejwt.authentication import JWTAuthentication
 
 import re
 
@@ -19,7 +20,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     serializer_class = ClientSerializer
     permission_classes = [permissions.IsAuthenticated]
-
+    authentication_classes = [JWTAuthentication]
     def get_queryset(self):
         user = self.request.user
         base_queryset = Client.objects.select_related('created_by')

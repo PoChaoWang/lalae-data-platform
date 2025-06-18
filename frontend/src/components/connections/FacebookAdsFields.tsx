@@ -4,6 +4,8 @@
 // ✨ 步驟 1: 導入所有需要的 UI 元件和圖示
 import { useState, useEffect, useRef } from 'react';
 import type { SelectableClient } from '@/lib/definitions';
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
+
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -26,21 +28,20 @@ import {
 } from "lucide-react";
 
 
-// --- 既有的 API 呼叫函式和型別定義維持不變 ---
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
 type AdAccount = { id: string; name: string };
 type FBField = { name: string; label: string };
 type AllFBFields = { [level: string]: { fields: FBField[], breakdowns: FBField[], action_breakdowns: FBField[] } };
 
-async function getAdAccounts(clientId: string): Promise<AdAccount[]> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-ad-accounts/?client_id=${clientId}`, { credentials: 'include' });
+async function getAdAccounts(protectedFetch: Function, clientId: string): Promise<AdAccount[]> {
+    const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-ad-accounts/?client_id=${clientId}`);
     if (!res.ok) return [];
     return res.json();
 }
 
-async function getAllFacebookFields(): Promise<AllFBFields> {
-    const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-all-fields/`, { credentials: 'include' });
+async function getAllFacebookFields(protectedFetch: Function): Promise<AllFBFields> {
+    const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/facebook-all-fields/`);
     if (!res.ok) {
         console.error(`Failed to fetch Facebook fields: ${res.status} ${res.statusText}`);
         return {};
@@ -50,7 +51,7 @@ async function getAllFacebookFields(): Promise<AllFBFields> {
 
 // --- 主要元件開始 ---
 export default function FacebookAdsFields({ onConfigChange, client, initialConfig }: { onConfigChange: (config: object) => void, client: SelectableClient, initialConfig?: any }) {
-    // === 既有的 State 管理維持不變 ===
+    const { protectedFetch } = useProtectedFetch();
     const [adAccounts, setAdAccounts] = useState<AdAccount[]>([]);
     const [allFields, setAllFields] = useState<AllFBFields | null>(null);
     const [formState, setFormState] = useState(() => ({
@@ -71,13 +72,14 @@ export default function FacebookAdsFields({ onConfigChange, client, initialConfi
 
     // === 既有的 useEffect Hooks (功能邏輯) 維持不變 ===
     const onConfigChangeRef = useRef(onConfigChange);
+    if (!protectedFetch) return;
     useEffect(() => {
         onConfigChangeRef.current = onConfigChange;
     }, [onConfigChange]);
 
     useEffect(() => {
-        getAdAccounts(String(client.id)).then(setAdAccounts);
-        getAllFacebookFields().then(setAllFields);
+        getAdAccounts(protectedFetch, client.id).then(setAdAccounts);
+        getAllFacebookFields(protectedFetch).then(setAllFields);
     }, [client.id]);
 
     useEffect(() => {

@@ -62,7 +62,7 @@ from .apis.google_sheet import GoogleSheetAPIClient
 from .tasks import sync_connection_data_task
 from itertools import chain
 from rest_framework import viewsets, status
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, action, authentication_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -79,24 +79,25 @@ logger = logging.getLogger(__name__)
 # ================== NEW: API ViewSets ==============================
 # ===================================================================
 
-class ClientViewSet(viewsets.ReadOnlyModelViewSet):
-    """
-    提供 Client 列表的唯讀 API 端點
-    """
-    serializer_class = ClientSerializer
-    permission_classes = [IsAuthenticated]
+# class ClientViewSet(viewsets.ReadOnlyModelViewSet):
+#     """
+#     提供 Client 列表的唯讀 API 端點
+#     """
+#     serializer_class = ClientSerializer
+#     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        if self.request.user.is_superuser:
-            return Client.objects.all().order_by('name')
-        # 一般使用者只能看到他們有權限的客戶
-        return Client.objects.filter(settings__user=self.request.user).distinct().order_by('name')
+#     def get_queryset(self):
+#         if self.request.user.is_superuser:
+#             return Client.objects.all().order_by('name')
+#         # 一般使用者只能看到他們有權限的客戶
+#         return Client.objects.filter(settings__user=self.request.user).distinct().order_by('name')
     
 class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
     """
     提供 DataSource 列表的唯讀 API 端點
     """
     serializer_class = DataSourceSerializer
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     queryset = DataSource.objects.filter(
         name__in=["GOOGLE_ADS", "FACEBOOK_ADS", "GOOGLE_SHEET"]
@@ -214,13 +215,18 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             )
 
 @api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_google_ads_resources(request):
     resources = GoogleAdsField.objects.filter(category='RESOURCE').order_by('field_name')
     data = [{'name': r.field_name, 'display': r.field_name.replace('_', ' ').title()} for r in resources]
     return Response(data)
 
 @api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_facebook_ad_accounts(request):
+    
     client_id = request.query_params.get('client_id')
     if not client_id:
         return Response({"error": "client_id is required"}, status=400)
@@ -242,6 +248,8 @@ def get_facebook_ad_accounts(request):
         return Response({"error": str(e)}, status=500)
 
 @api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_facebook_all_fields(request):
     try:
         # 直接呼叫我們新建的函式，它會回傳一個乾淨的 Python 字典
@@ -262,6 +270,8 @@ def get_facebook_all_fields(request):
         )
 
 @require_http_methods(["GET"])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def get_compatible_google_ads_fields_api(request):
     """
     一個 API 端點，根據提供的 resource_name，回傳可用的欄位。
@@ -317,32 +327,42 @@ def get_compatible_google_ads_fields_api(request):
         logger.error(f"API Error in get_compatible_google_ads_fields_api: {e}", exc_info=True)
         return JsonResponse({'error': 'An internal server error occurred.'}, status=500)
 
-@login_required
+# @login_required
 def client_oauth_authorize(request, client_id): # client_id is UUID here
-   
+    if not request.user.is_authenticated:
+        data_source = request.GET.get('data_source')
+        provider_login_url = None
+
+        if data_source == 'GOOGLE_ADS':
+            provider_login_url = reverse('google_login') 
+        elif data_source == 'FACEBOOK_ADS':
+            provider_login_url = reverse('facebook_login') 
+        if provider_login_url:
+            destination_after_login = request.get_full_path()
+            final_login_url = f"{provider_login_url}?next={urllib.parse.quote(destination_after_login)}"
+            
+            logger.info(f"User not authenticated. Redirecting to provider login: {final_login_url}")
+            return redirect(final_login_url)
+        else:
+            messages.error(request, "Invalid data source specified for authorization.")
+            return redirect(settings.LOGIN_URL)
+
     data_source_name = request.GET.get('data_source')
     client = get_object_or_404(Client, id=client_id)
 
     request.session['oauth_client_id_to_link'] = str(client.id)
     redirect_path = request.GET.get('redirect_uri')
     if redirect_path:
-        # 如果前端有提供，就使用它
         request.session['final_redirect_after_oauth_link'] = redirect_path
     else:
-        # 如果沒有提供，則使用一個安全的預設值 (例如前端的首頁)
         request.session['final_redirect_after_oauth_link'] = "/"
 
     if data_source_name == "GOOGLE_ADS":
-        # 直接使用 allauth 的 Google 登入 URL
         google_login_url = reverse('google_login')
-        
-        # 構建參數
         params = {
-            'process': 'connect',  # 用於連接現有帳戶
-            'next': reverse('connections:oauth_callback')  # OAuth 完成後的回調
+            'process': 'connect',  
+            'next': reverse('connections:oauth_callback')
         }
-        
-        # 構建最終 URL
         final_url = f"{google_login_url}?{urllib.parse.urlencode(params)}"
         return redirect(final_url)
 
@@ -352,7 +372,8 @@ def client_oauth_authorize(request, client_id): # client_id is UUID here
         
     else:
         messages.error(request, "Invalid data source for OAuth.")
-        return redirect("connections:connection_list")
+        # 建議可以導向到一個更友善的錯誤頁面或列表頁
+        return redirect("connections:connection_list") # 假設你有這個 URL name
 
 @login_required
 def oauth_callback(request): # Primarily for Google via AllAuth
@@ -533,6 +554,8 @@ def facebook_oauth_callback(request):
     return redirect("connections:connection_list")
 
 @login_required
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
 def check_auth_status(request):
     """檢查使用者的 Google 授權狀態"""
     try:

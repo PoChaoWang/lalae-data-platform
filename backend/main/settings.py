@@ -100,7 +100,8 @@ INSTALLED_APPS = [
     # Rest Framework
     "rest_framework",
     'rest_framework.authtoken',
-    'rest_framework_simplejwt', 
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     # Rest auth
     'dj_rest_auth',
     'dj_rest_auth.registration',
@@ -338,6 +339,8 @@ from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # 'ACCESS_TOKEN_LIFETIME': timedelta(seconds=20), 
+    # 'REFRESH_TOKEN_LIFETIME': timedelta(minutes=2),
     'ROTATE_REFRESH_TOKENS': True,
 }
 

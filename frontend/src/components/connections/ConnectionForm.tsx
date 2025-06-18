@@ -19,7 +19,7 @@ const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 
 type AuthStatus = 'loading' | 'authorized' | 'not-authorized';
 
-export default function ConnectionForm({ client, dataSource }: { client: SelectableClient; dataSource: DataSource; }) {
+export default function ConnectionForm({ client, dataSource, initialData }: { client: SelectableClient; dataSource: DataSource; initialData?: { displayName: string; config: any; } | null }) {
   const { protectedFetch } = useProtectedFetch();
   const router = useRouter();
   const pathname = usePathname(); 
@@ -30,43 +30,16 @@ export default function ConnectionForm({ client, dataSource }: { client: Selecta
   const [authIdentifier, setAuthIdentifier] = useState<string>('');
   
   const [formData, setFormData] = useState({
-    display_name: '',
+    display_name: initialData?.displayName || '', 
     target_dataset_id: client.bigquery_dataset_id || '',
-    sync_frequency: 'Daily',
-    sync_hour: '00',
-    sync_minute: '00',
-    weekly_day_of_week: '1',
-    monthly_day_of_month: 1,
-    config: {},
+    sync_frequency: initialData?.config?.sync_frequency || 'Daily', 
+    sync_hour: initialData?.config?.sync_hour || '00', 
+    sync_minute: initialData?.config?.sync_minute || '00', 
+    weekly_day_of_week: initialData?.config?.weekly_day_of_week || '1', 
+    monthly_day_of_month: initialData?.config?.monthly_day_of_month || 1, 
+    config: initialData?.config || {}, 
   });
 
-  useEffect(() => {
-    const initializeFromClone = async (id: string) => {
-      if (!protectedFetch) return;
-      try {
-        const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${id}/`);
-        if (!res.ok) throw new Error(`Failed to fetch connection data (ID: ${id}) for cloning.`);
-        const data = await res.json();
-        setFormData({
-          display_name: `${data.display_name} (Copy)`,
-          target_dataset_id: client.bigquery_dataset_id || '',
-          sync_frequency: data.config.sync_frequency || 'Daily',
-          sync_hour: data.config.sync_hour || '00',
-          sync_minute: data.config.sync_minute || '00',
-          weekly_day_of_week: data.config.weekly_day_of_week || '1',
-          monthly_day_of_month: data.config.monthly_day_of_month || 1,
-          config: data.config || {},
-        });
-      } catch (err: any) {
-        setError(`Could not load data for cloning: ${err.message}`);
-      }
-    };
-
-    const cloneFromId = searchParams.get('cloneFrom');
-    if (cloneFromId) {
-      initializeFromClone(cloneFromId);
-    }
-  }, [searchParams, client.bigquery_dataset_id, protectedFetch]);
 
   useEffect(() => {
     const checkAuthStatus = async () => {

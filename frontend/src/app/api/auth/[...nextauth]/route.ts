@@ -4,6 +4,14 @@ import type { AuthOptions } from "next-auth"
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
+function isTokenExpired(expiryTime: number | undefined): boolean {
+  if (!expiryTime) return true;
+  
+  // Token refresh test
+  // return Date.now() / 1000 > expiryTime - 5;
+  return Date.now() / 1000 > expiryTime - 300; 
+}
+
 export const authOptions: AuthOptions = {
   session: {
     strategy: 'jwt',
@@ -23,15 +31,15 @@ export const authOptions: AuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.error('Missing credentials');
+          console.error('Missing credentials', credentials);
           return null;
         }
 
         try {
-          console.log('Attempting login with dj-rest-auth:', { 
-            email: credentials.email,
-            url: `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/auth/login/`
-          });
+          // console.log('Attempting login with dj-rest-auth:', { 
+          //   email: credentials.email,
+          //   url: `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/auth/login/`
+          // });
 
           // dj-rest-auth 登入端點
           const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/auth/login/`, {
@@ -46,13 +54,13 @@ export const authOptions: AuthOptions = {
             },
           });
 
-          console.log('dj-rest-auth response status:', res.status);
+          // console.log('dj-rest-auth response status:', res.status);
 
           // 讀取回應
           let responseData;
           try {
             responseData = await res.json();
-            console.log('dj-rest-auth response data:', responseData);
+            // console.log('dj-rest-auth response data:', responseData);
           } catch (parseError) {
             console.error('Failed to parse JSON response:', parseError);
             const textResponse = await res.text();
@@ -75,7 +83,7 @@ export const authOptions: AuthOptions = {
           }
           
           if (responseData && responseData.user) {
-            console.log('Login successful with dj-rest-auth:', responseData);
+            // console.log('Login successful with dj-rest-auth:', responseData);
             const userToReturn = {
               id: responseData.user.pk.toString(),
               email: responseData.user.email,
@@ -113,14 +121,14 @@ export const authOptions: AuthOptions = {
           
           case 'credentials':
             // 只有當使用帳號密碼登入時，才從 user 物件中提取 Django token
-            console.log('--- [JWT] Credentials login detected. Populating Django tokens.');
+            // console.log('--- [JWT] Credentials login detected. Populating Django tokens.');
             token.accessToken = user.access_token;
             token.refreshToken = user.refresh_token;
             token.user = user.user; // 保存從 Django 來的詳細使用者資料
             break;
 
             case 'google':
-              console.log('--- [JWT] Google login. Exchanging token with Django backend.');
+              // console.log('--- [JWT] Google login. Exchanging token with Django backend.');
               try {
                   // 使用你剛剛建立的後端端點
                   const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/social-auth/`, {
@@ -133,7 +141,7 @@ export const authOptions: AuthOptions = {
 
                   if (res.ok) {
                       const djangoTokens = await res.json();
-                      console.log('--- [JWT] Successfully exchanged Google token for Django JWT.');
+                      // console.log('--- [JWT] Successfully exchanged Google token for Django JWT.');
                       // 將後端回傳的 Django JWT 存入 next-auth 的 token
                       token.accessToken = djangoTokens.access;
                       token.refreshToken = djangoTokens.refresh;
@@ -148,6 +156,58 @@ export const authOptions: AuthOptions = {
               break;
       }
   }
+  // Check if access token is expired and refresh it
+  if (token.accessToken && token.refreshToken && isTokenExpired(token.accessTokenExpires)) {
+    // console.log('--- [JWT] Access token expired or near expiration. Attempting to refresh.');
+    try {
+      const refreshRes = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/auth/token/refresh/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh: token.refreshToken }),
+      });
+
+      if (refreshRes.ok) {
+        const refreshedTokens = await refreshRes.json();
+        // console.log('--- [JWT] Token refreshed successfully.');
+        token.accessToken = refreshedTokens.access;
+        // If your backend rotates refresh tokens, update it here:
+        if (refreshedTokens.refresh) {
+          token.refreshToken = refreshedTokens.refresh;
+        }
+        // Token refresh test:
+        // token.accessTokenExpires = Date.now() / 1000 + 20;
+        // Test
+        token.accessTokenExpires = Date.now() / 1000 + (60 * 59);
+      } else {
+        const errorData = await refreshRes.json();
+        console.error('--- [JWT] Failed to refresh token:', errorData);
+        const isRefreshTokenInvalid = refreshRes.status === 401 ||
+                                          (errorData && errorData.detail && errorData.detail.includes('invalid or expired')) ||
+                                          (errorData && errorData.code === 'token_not_valid');
+
+            if (isRefreshTokenInvalid) {
+              // console.log('--- [JWT] Refresh token is also invalid or expired. Forcing re-login.');
+              // 清除所有 token 和 session 數據，強制重新登入
+              token.accessToken = undefined;
+              token.refreshToken = undefined;
+              token.user = undefined;
+              token.accessTokenExpires = undefined;
+              token.error = 'RefreshTokenExpired'; // 設定特定錯誤類型，用於前端判斷
+            } else {
+              // console.log('--- [JWT] Access token refresh failed, but refresh token may still be valid. Requesting page refresh.');
+              // 僅 Access Token 刷新失敗，但 Refresh Token 可能仍然有效
+              token.accessToken = undefined; // 將 Access Token 設為 undefined，表示它失效了
+              token.error = 'Please refresh the page to re-authenticate.'; // 設定前端顯示的錯誤訊息
+            }
+          }
+        } catch (error) {
+          console.error('--- [JWT] Error during token refresh request:', error);
+          // 網路請求本身失敗，也可能是暫時性問題，建議重新整理
+          token.accessToken = undefined;
+          token.error = 'Network error during re-authentication. Please refresh the page.';
+        }
+      }
+
   return token;
 },
     
@@ -170,7 +230,7 @@ export const authOptions: AuthOptions = {
     },
     
     async signIn({ user, account, profile }) {
-        console.log('SignIn callback:', { user, account: account?.provider });
+        // console.log('SignIn callback:', { user, account: account?.provider });
         return true;
     },
     

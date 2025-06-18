@@ -71,26 +71,13 @@ from .models import GoogleAdsField
 from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
 from allauth.socialaccount.models import SocialToken
 
-from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer, ConnectionExecutionSerializer
+from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer, ConnectionListSerializer, ConnectionExecutionSerializer
 
 logger = logging.getLogger(__name__)
 
 # ===================================================================
 # ================== NEW: API ViewSets ==============================
 # ===================================================================
-
-# class ClientViewSet(viewsets.ReadOnlyModelViewSet):
-#     """
-#     提供 Client 列表的唯讀 API 端點
-#     """
-#     serializer_class = ClientSerializer
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         if self.request.user.is_superuser:
-#             return Client.objects.all().order_by('name')
-#         # 一般使用者只能看到他們有權限的客戶
-#         return Client.objects.filter(settings__user=self.request.user).distinct().order_by('name')
     
 class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -121,7 +108,15 @@ class ConnectionViewSet(viewsets.ModelViewSet):
             return Connection.objects.all().order_by("-created_at")
 
         accessible_clients = Client.objects.filter(settings__user=user)
-        return Connection.objects.filter(client__in=accessible_clients).order_by("-created_at")
+        return Connection.objects.filter(client__in=accessible_clients).select_related('data_source', 'client').order_by("-created_at")
+    
+    def get_serializer_class(self):
+        """
+        根據不同的 action 返回不同的序列化器。
+        """
+        if self.action == 'list':
+            return ConnectionListSerializer # 列表視圖使用輕量級序列化器
+        return self.serializer_class # 其他操作 (如 retrieve, create, update)
 
     def perform_create(self, serializer):
         """
@@ -553,7 +548,6 @@ def facebook_oauth_callback(request):
     
     return redirect("connections:connection_list")
 
-@login_required
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def check_auth_status(request):

@@ -81,12 +81,12 @@ export default function ConnectionList() {
           )
       },
       {
-          accessorKey: 'data_source.display_name',
+          accessorKey: 'data_source',
           header: 'Data Source',
           size: 180,
       },
       {
-          accessorKey: 'client.name',
+          accessorKey: 'client',
           header: 'Client',
           size: 150,
       },
@@ -169,6 +169,9 @@ export default function ConnectionList() {
     }, [protectedFetch]);
 
   const handleToggleExpand = async (connectionId: number) => {
+    if (!protectedFetch) {
+        return;
+      }
     if (expandedConnectionId === connectionId) {
         setExpandedConnectionId(null);
         return;
@@ -180,9 +183,7 @@ export default function ConnectionList() {
     setHistory([]);
 
     try {
-        const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/executions/`, {
-            credentials: 'include',
-        });
+        const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/executions/`, {});
         if (!res.ok) {
             const errorData = await res.json();
             throw new Error(errorData.error || `Request failed with status ${res.status}`);

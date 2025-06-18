@@ -3,44 +3,54 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-// ✨ 導入新的 UI 元件和圖示
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
 
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
+
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-export default function DeleteConnectionModal({ isOpen, onClose, connectionId, connectionName, csrfToken }: { isOpen: boolean; onClose: () => void; connectionId: number; connectionName: string; csrfToken: string | null;}) {
+export default function DeleteConnectionModal({ isOpen, onClose, connectionId, connectionName }: { isOpen: boolean; onClose: () => void; connectionId: number; connectionName: string;}) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
-  // ✨ 新增 state 來處理確認輸入
   const [confirmText, setConfirmText] = useState("");
+
+  // ✨ 使用 useProtectedFetch hook
+  const { protectedFetch } = useProtectedFetch();
 
   const handleDelete = async () => {
     setIsDeleting(true);
-    if (!csrfToken) {
-      alert('Security token is missing. Cannot delete.');
+
+    if (!protectedFetch) { // ✨ 確保 protectedFetch 已準備好
+      alert('Authentication is not ready. Cannot delete.');
       setIsDeleting(false);
       return;
     }
+
     try {
-      const res = await fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, {
+      const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, {
           method: 'DELETE',
-          headers: { 'X-CSRFToken': csrfToken || '' },
-          credentials: 'include',
+          // ✨ 移除 X-CSRFToken header，protectedFetch 會自動加入 Authorization header
+          // headers: { 'X-CSRFToken': csrfToken || '' },
+          // credentials: 'include', // JWT 通常不需要這個
       });
+
       if (res.ok || res.status === 204) {
           onClose();
           router.push('/connections');
           router.refresh();
       } else {
-          throw new Error('Failed to delete the connection.');
+          // 嘗試解析錯誤訊息
+          const errorData = await res.json();
+          throw new Error(errorData.detail || 'Failed to delete the connection.');
       }
-    } catch (error) {
-        console.error(error);
-        alert('An error occurred while deleting.');
+    } catch (error: any) {
+        console.error("Deletion error:", error); // 打印詳細錯誤
+        alert(`An error occurred while deleting: ${error.message || 'Unknown error'}`);
     } finally {
         setIsDeleting(false);
     }

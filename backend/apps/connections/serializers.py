@@ -48,6 +48,23 @@ class ClientSerializer(serializers.ModelSerializer):
             'google_social_account'
         ]
 
+class ConnectionListSerializer(serializers.ModelSerializer):
+    data_source = serializers.CharField(source='data_source.display_name', read_only=True)
+    client = serializers.CharField(source='client.name', read_only=True)
+    class Meta:
+        model = Connection
+        fields = [
+            'id', 
+            'is_enabled', 
+            'display_name', 
+            'data_source', 
+            'client',      
+            'status', 
+            'target_dataset_id', 
+            'updated_at',
+        ]
+
+
 class ConnectionSerializer(serializers.ModelSerializer):
     client = ClientSerializer(read_only=True)
     data_source = DataSourceSerializer(read_only=True)

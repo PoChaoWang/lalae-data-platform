@@ -21,6 +21,7 @@ declare module 'next-auth' {
     access_token?: string;
     refresh_token?: string;
     user?: BackendUser;
+    accessTokenExpires?: number;
   }
 }
 
@@ -29,5 +30,6 @@ declare module 'next-auth/jwt' {
     user?: BackendUser;
     accessToken?: string;
     refreshToken?: string;
+    accessTokenExpires?: number;
   }
 }

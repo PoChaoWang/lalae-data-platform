@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CloneConnectionButton from '@/components/connections/CloneConnectionButton'; 
 import DeleteConnectionModal from '@/components/connections/DeleteConnectionModal';
+import ProtectedComponent from '@/components/ProtectedComponent';
 import { Connection } from '@/lib/definitions';
 
 // ✨ 導入所有需要的 UI 元件和圖示
@@ -18,13 +19,15 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ArrowLeft, Zap, ChevronDown, Settings, Trash2, Loader2, AlertCircle } from "lucide-react";
 
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
+
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
 export default function ConnectionDetailPage() {
   const params = useParams();
   const router = useRouter();
   const connectionId = params.connectionId;
-  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  // const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [connection, setConnection] = useState<Connection | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,30 +44,23 @@ export default function ConnectionDetailPage() {
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
+  const { protectedFetch } = useProtectedFetch();
+
   useEffect(() => {
     if (!connectionId) return;
-
-    const fetchDataAndToken = async () => {
+    if (!protectedFetch) return;
+    const fetchData = async () => {
       setLoading(true);
-      setError(null); // 在開始請求前重置錯誤狀態
-
+      setError(null); 
       try {
-        // ✨ 使用 Promise.all 同時發起兩個請求
-        const [connRes, csrfRes] = await Promise.all([
-          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, { credentials: 'include' }),
-          fetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/get-csrf-token/`, { credentials: 'include' })
-        ]);
+        const connRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${connectionId}/`, {});
 
         if (!connRes.ok) throw new Error('Failed to fetch connection details.');
-        if (!csrfRes.ok) throw new Error('Failed to fetch CSRF token.');
 
         const connData: Connection = await connRes.json();
-        const csrfData = await csrfRes.json();
 
         // 設定連線資料
         setConnection(connData);
-        // ✨ 將從 API 獲取的 Token 存入 state
-        setCsrfToken(csrfData.csrfToken); 
 
         // 初始化表單 state (這部分不變)
         setIsEnabled(connData.is_enabled);
@@ -81,7 +77,7 @@ export default function ConnectionDetailPage() {
       }
     };
 
-    fetchDataAndToken();
+    fetchData();
   }, [connectionId]);
 
   const handleUpdateSchedule = async (e: React.FormEvent) => {
@@ -89,8 +85,8 @@ export default function ConnectionDetailPage() {
     setIsUpdating(true);
     setUpdateMessage(null);
 
-    if (!csrfToken) {
-      setUpdateMessage({ type: 'error', text: 'Security token is missing. Cannot update.' });
+    if (!protectedFetch) {
+      setUpdateMessage({ type: 'error', text: 'Authentication is not ready. Cannot update.' });
       setIsUpdating(false);
       return;
     }
@@ -113,7 +109,6 @@ export default function ConnectionDetailPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRFToken': csrfToken,
         },
         credentials: 'include',
         body: JSON.stringify(payload)
@@ -274,7 +269,6 @@ export default function ConnectionDetailPage() {
             onClose={() => setIsDeleteModalOpen(false)}
             connectionId={connection.id}
             connectionName={connection.display_name}
-            csrfToken={csrfToken}
         />
     </div>
   );

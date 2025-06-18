@@ -48,7 +48,7 @@ export default function NewConnectionPage() {
 
           const fullClientId = clonedConnectionData.client.id;
 
-          const fullClientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${fullClientId}/`, { 
+          const fullClientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${fullClientId}/`, { 
             cache: 'no-store' 
           });
           if (!fullClientRes.ok) throw new Error('Failed to fetch full client details.');
@@ -63,7 +63,7 @@ export default function NewConnectionPage() {
           setStep(3); // 直接跳到第三步
 
         } else if (clientId) {
-          if (!selectedClient) {
+          if (!selectedClient || selectedClient.id !== clientId) {
             // 如果使用者是透過直接貼上 URL 進來的，我們還是需要 fetch 一次
             const clientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/{clientId}/`, { 
                 cache: 'no-store'
@@ -99,7 +99,7 @@ export default function NewConnectionPage() {
     };
 
     initializePage();
-  }, [searchParams, router, protectedFetch, selectedClient]);
+  }, [searchParams, router, protectedFetch]);
 
   const handleClientSelect = (client: SelectableClient) => {
     setSelectedClient(client);
@@ -195,7 +195,7 @@ return (
                         <>
                             {step === 1 && <SelectClientStep onClientSelect={handleClientSelect} selectedClient={selectedClient} />}
                             {step === 2 && selectedClient && <SelectDataSourceStep onDataSourceSelect={handleDataSourceSelect} selectedDataSource={selectedDataSource} />}
-                            {step === 3 && selectedClient && selectedDataSource && <ConnectionForm client={selectedClient} dataSource={selectedDataSource} />}
+                            {step === 3 && selectedClient && selectedDataSource && <ConnectionForm client={selectedClient} dataSource={selectedDataSource} initialData={initialDataForForm}/>}
                         </>
                     )}
                 </div>

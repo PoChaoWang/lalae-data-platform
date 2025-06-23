@@ -66,7 +66,7 @@ export default function SelectClientStep({
     // --- UI from Wizard with Loading/Error States ---
     if (loading) {
         return (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 max-w-4xl md:grid-cols-2 gap-4">
                 {Array.from({ length: 4 }).map((_, index) => (
                     <div key={index} className="bg-gray-800/30 border border-gray-700/50 rounded-lg p-4 animate-pulse">
                         <div className="h-5 w-3/4 bg-gray-700 rounded-md mb-3"></div>
@@ -90,10 +90,9 @@ export default function SelectClientStep({
     }
 
     return (
-        <ProtectedComponent>
             <div>
                  {/* The h2 title is now managed by page.tsx */}
-                <div className="mb-6">
+                <div className="mb-6 max-w-4xl">
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                         <Input
@@ -128,6 +127,5 @@ export default function SelectClientStep({
                     ))}
                 </div>
             </div>
-        </ProtectedComponent>
     );
 }

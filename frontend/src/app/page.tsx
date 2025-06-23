@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Globe, User, Zap, Users, Search, ChevronDown, BarChart3, TrendingUp, Activity } from "lucide-react"
+import { Globe, User, Zap, Users, DatabaseZap, ChevronDown, BarChart3, TrendingUp, Activity } from "lucide-react"
 
 export default function HomePage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
@@ -83,7 +83,7 @@ export default function HomePage() {
             {/* Queries Card */}
             <div className="bg-gray-800/50 backdrop-blur-sm border border-orange-500/20 rounded-xl p-8 hover:border-orange-500/40 transition-all duration-300 hover:scale-105 group">
               <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center mb-6 group-hover:shadow-lg group-hover:shadow-orange-500/25 transition-all duration-300">
-                <Search className="w-8 h-8 text-black" />
+                <DatabaseZap className="w-8 h-8 text-black" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-orange-400">Queries</h3>
               <p className="text-gray-300 leading-relaxed">

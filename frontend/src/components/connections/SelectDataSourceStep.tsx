@@ -108,40 +108,38 @@ export default function SelectDataSourceStep({
     }
 
     return (
-        <ProtectedComponent>
-            <div>
-                {/* The h2 title is now managed by page.tsx */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {dataSources.map((source) => {
-                        const { logo: Logo, color } = getSourceStyle(source.name);
-                        return (
-                            <div
-                                key={source.id}
-                                onClick={() => onDataSourceSelect(source)}
-                                className={`p-6 rounded-xl border cursor-pointer transition-all duration-300 hover:scale-105 ${
-                                    selectedDataSource?.id === source.id
-                                        ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/25"
-                                        : "border-gray-700 hover:border-orange-500/50 bg-gray-900/30"
-                                }`}
-                            >
-                                <div className="text-center">
-                                    <div
-                                        className={`w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center text-2xl font-bold ${
-                                            color === "blue" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"
-                                        }`}
-                                    >
-                                        <Logo />
-                                    </div>
-                                    <h3 className="text-white font-semibold">{source.display_name}</h3>
-                                    {selectedDataSource?.id === source.id && (
-                                        <Check className="w-5 h-5 text-orange-400 mx-auto mt-2" />
-                                    )}
+        <div>
+            {/* The h2 title is now managed by page.tsx */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {dataSources.map((source) => {
+                    const { logo: Logo, color } = getSourceStyle(source.name);
+                    return (
+                        <div
+                            key={source.id}
+                            onClick={() => onDataSourceSelect(source)}
+                            className={`p-6 rounded-xl border cursor-pointer transition-all duration-300 hover:scale-105 ${
+                                selectedDataSource?.id === source.id
+                                    ? "border-orange-500 bg-orange-500/10 shadow-lg shadow-orange-500/25"
+                                    : "border-gray-700 hover:border-orange-500/50 bg-gray-900/30"
+                            }`}
+                        >
+                            <div className="text-center">
+                                <div
+                                    className={`w-16 h-16 mx-auto mb-4 rounded-xl flex items-center justify-center text-2xl font-bold ${
+                                        color === "blue" ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-400"
+                                    }`}
+                                >
+                                    <Logo />
                                 </div>
+                                <h3 className="text-white font-semibold">{source.display_name}</h3>
+                                {selectedDataSource?.id === source.id && (
+                                    <Check className="w-5 h-5 text-orange-400 mx-auto mt-2" />
+                                )}
                             </div>
-                        );
-                    })}
-                </div>
+                        </div>
+                    );
+                })}
             </div>
-        </ProtectedComponent>
+        </div>
     );
 }

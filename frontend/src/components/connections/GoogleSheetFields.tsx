@@ -29,7 +29,6 @@ type FormState = {
   sheet_id: string;
   tab_name: string;
   schema: SchemaColumn[];
-  date_column: string | null;
 };
 
 
@@ -40,13 +39,21 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
     sheet_id: '',
     tab_name: '',
     schema: [],
-    date_column: null,
   });
 
   const [columnsInput, setColumnsInput] = useState('');
 
   const onConfigChangeRef = useRef(onConfigChange);
-  useEffect(() => { onConfigChangeRef.current = onConfigChange; }, [onConfigChange]);
+  useEffect(() => {
+    const backendConfig = {
+        sheet_id: formState.sheet_id,
+        tab_name: formState.tab_name,
+        schema: { 
+            columns: formState.schema, 
+        },
+    };
+    onConfigChangeRef.current(backendConfig); 
+}, [formState]);
   
   useEffect(() => {
     if (initialConfig?.sheet_id && !formState.sheet_id) {
@@ -55,7 +62,6 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
         sheet_id: initialConfig.sheet_id,
         tab_name: initialConfig.tab_name || '',
         schema: initialSchema,
-        date_column: initialConfig.schema?.date_column || null,
       });
       if (initialSchema.length > 0) {
         setColumnsInput(initialSchema.map((col: SchemaColumn) => col.name).join(', '));
@@ -78,13 +84,13 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
         const existingColumn = formState.schema.find(col => col.name === name);
         return { name, type: existingColumn?.type || 'STRING' };
       });
-      let newDateColumn = formState.date_column;
-      if (newDateColumn && !derivedColumnNames.includes(newDateColumn)) {
-        newDateColumn = derivedColumnNames.length > 0 ? derivedColumnNames[0] : null;
-      }
-      setFormState(prev => ({ ...prev, schema: newSchema, date_column: newDateColumn }));
+      // let newDateColumn = formState.date_column;
+      // if (newDateColumn && !derivedColumnNames.includes(newDateColumn)) {
+      //   newDateColumn = derivedColumnNames.length > 0 ? derivedColumnNames[0] : null;
+      // }
+      setFormState(prev => ({ ...prev, schema: newSchema}));
     }
-  }, [derivedColumnNames, formState.schema, formState.date_column, formState.sheet_id]);
+  }, [derivedColumnNames, formState.schema, formState.sheet_id]);
 
   useEffect(() => { onConfigChangeRef.current(formState); }, [formState]);
   
@@ -93,9 +99,9 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
     setFormState(prev => ({ ...prev, schema: prev.schema.map(col => col.name === columnName ? { ...col, type: newType } : col) }));
   };
 
-  const handleDateFieldChange = (columnName: string) => {
-    setFormState(prev => ({ ...prev, date_column: columnName }));
-  };
+  // const handleDateFieldChange = (columnName: string) => {
+  //   setFormState(prev => ({ ...prev, date_column: columnName }));
+  // };
   
   // 稍作修改以適應新版 Input 的 onChange
   const handleFormStateChange = (field: keyof FormState, value: string) => {
@@ -182,7 +188,7 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
                 <tr>
                   <th scope="col" className="px-6 py-3">Column Name</th>
                   <th scope="col" className="px-6 py-3">Data Type</th>
-                  <th scope="col" className="px-6 py-3 text-center">Date Field</th>
+                 
                 </tr>
               </thead>
               <tbody>
@@ -204,15 +210,7 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
                           </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                        <RadioGroup
-                            value={formState.date_column || ""}
-                            onValueChange={() => handleDateFieldChange(col.name)}
-                            className="flex justify-center"
-                        >
-                            <RadioGroupItem value={col.name} id={`date-${col.name}`} className="border-orange-500/50 text-orange-500" />
-                        </RadioGroup>
-                    </td>
+                    
                   </tr>
                 ))}
               </tbody>

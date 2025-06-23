@@ -94,3 +94,72 @@ export interface ConnectionExecution {
   config: any; // 可以是一個 JSON 物件
   triggered_by: TriggeredBy | null; // 可能為 null，代表系統觸發 (Celery Beat)
 }
+
+
+export type QueryDefinition = {
+  id: number;
+  name: string;
+  description: string | null;
+  sql_query: string;
+  bigquery_project_id: string;
+  bigquery_dataset_id: string;
+  schedule_type: 'ONCE' | 'PERIODIC'; 
+  cron_schedule: string | null; 
+  output_target: 'NONE' | 'GOOGLE_SHEET' | 'LOOKER_STUDIO'; 
+  output_config: any | null;
+  last_run_status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SCHEDULED' | 'OUTPUT_ERROR' | 'SAVED_ONLY'; // 對應 Django 的 STATUS_CHOICES
+  last_run_initiated_at: string | null; 
+  last_successful_run_result: {
+    id: number;
+    status: string; 
+    executed_at: string; 
+    result_data_csv: string | null; 
+    error_message: string | null; 
+  } | null;
+  last_successful_test_hash: string | null; 
+  last_tested_at: string | null; 
+  owner_id: number | null; 
+  created_at: string; 
+  updated_at: string; 
+  has_downloadable_result: boolean; 
+  latest_execution_time?: string | null; 
+  latest_status?: string; 
+};
+
+export type QueryRunResult = {
+  id: number;
+  query: number; 
+  executed_at: string; 
+  completed_at: string | null; 
+  status: string; 
+  result_rows_count: number | null;
+  result_data_csv: string | null;
+  error_message: string | null;
+  triggered_by: string; 
+  result_output_link: string | null; 
+  result_message: string | null;
+  result_storage_path: string | null;
+};
+export type ClientInfo = Pick<Client, 'id' | 'name' | 'bigquery_dataset_id'>;
+
+export type QueryListResponse = {
+  count: number; 
+  next: string | null; 
+  previous: string | null; 
+  results: QueryDefinition[]; 
+  current_dataset: string;
+  client_datasets: ClientInfo[];
+  current_client_name: string;
+  current_access_level: string;
+};
+
+export type QueryExecutionHistoryResponse = {
+  status: 'success' | 'error';
+  executions: QueryRunResult[];
+  message?: string;
+};
+
+export type RerunQueryResponse = {
+  status: 'success' | 'error';
+  message: string;
+};

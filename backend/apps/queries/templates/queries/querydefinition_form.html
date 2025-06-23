@@ -139,8 +139,8 @@
                             
                             <div id="weekly-schedule" class="schedule-details">
                                 <div class="mb-3">
-                                    <label for="schedule_week_of_day" class="form-label">Day of Week</label>
-                                    <select id="schedule_week_of_day" class="form-select">
+                                    <label for="schedule_days_of_week" class="form-label">Day of Week</label>
+                                    <select id="schedule_days_of_week" class="form-select">
                                         <option value="1">Monday</option>
                                         <option value="2">Tuesday</option>
                                         <option value="3">Wednesday</option>
@@ -154,8 +154,8 @@
                             
                             <div id="monthly-schedule" class="schedule-details">
                                 <div class="mb-3">
-                                    <label for="schedule_month_of_day" class="form-label">Day of Month (1-31)</label>
-                                    <input type="number" class="form-control" id="schedule_month_of_day" min="1" max="31" value="1">
+                                    <label for="schedule_day_of_month" class="form-label">Day of Month (1-31)</label>
+                                    <input type="number" class="form-control" id="schedule_day_of_month" min="1" max="31" value="1">
                                 </div>
                             </div>
                         </div>
@@ -360,10 +360,10 @@
                         document.getElementById('schedule_hour').value = scheduleData.hour || '0';
                         document.getElementById('schedule_minute').value = scheduleData.minute || '0';
                         if (scheduleData.week_of_day) {
-                            document.getElementById('schedule_week_of_day').value = scheduleData.week_of_day;
+                            document.getElementById('schedule_days_of_week').value = scheduleData.week_of_day;
                         }
                         if (scheduleData.month_of_day) {
-                            document.getElementById('schedule_month_of_day').value = scheduleData.month_of_day;
+                            document.getElementById('schedule_day_of_month').value = scheduleData.month_of_day;
                         }
                     }
                 } catch(e) { console.error('Error parsing schedule config:', e); }
@@ -393,10 +393,10 @@
                 scheduleConfig.hour = document.getElementById('schedule_hour').value;
                 scheduleConfig.minute = document.getElementById('schedule_minute').value;
                 if (scheduleConfig.frequency_type === 'WEEKLY') {
-                    scheduleConfig.week_of_day = document.getElementById('schedule_week_of_day').value;
+                    scheduleConfig.week_of_day = document.getElementById('schedule_days_of_week').value;
                 }
                 if (scheduleConfig.frequency_type === 'MONTHLY') {
-                    scheduleConfig.month_of_day = document.getElementById('schedule_month_of_day').value;
+                    scheduleConfig.month_of_day = document.getElementById('schedule_day_of_month').value;
                 }
             }
             scheduleConfigInput.value = JSON.stringify(scheduleConfig);

@@ -4,10 +4,10 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import type { Client } from '@/lib/definitions'; 
-
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Users, Database, Calendar, User } from "lucide-react"
+import { Plus, Users, Database, Calendar, User, Verified } from "lucide-react"
 
 const API_URL = `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/`;
 
@@ -15,19 +15,19 @@ export default function ClientList() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { protectedFetch } = useProtectedFetch();
 
   useEffect(() => {
+    if (!protectedFetch) return;
     const fetchClients = async () => {
       try {
-        const response = await fetch(API_URL, {
-          credentials: 'include',
-        });
+        const response = await protectedFetch(API_URL, {});
 
         if (!response.ok) {
           if (response.status === 403 || response.status === 401) {
-            throw new Error('驗證失敗，請確認您已登入。');
+            throw new Error('Verification failed');
           }
-          throw new Error(`獲取資料失敗: ${response.statusText}`);
+          throw new Error(`Fetch failed: ${response.statusText}`);
         }
 
         const data = await response.json();
@@ -38,7 +38,7 @@ export default function ClientList() {
         } else if (Array.isArray(data)) {
           setClients(data);
         } else {
-          console.warn('API 回應格式非預期:', data);
+          console.warn('Unexpected data format:', data);
           setClients([]);
         }
 

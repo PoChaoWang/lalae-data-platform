@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Users, Zap, X, AlertCircle } from "lucide-react"
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
+
+const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 
 interface ClientFormProps {
   initialData?: Client | null 
@@ -27,30 +30,9 @@ export default function ClientForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, any>>({})
   const [csrfToken, setCsrfToken] = useState<string | null>(null)
+  const { protectedFetch } = useProtectedFetch();
   
   const isEditMode = initialData !== null
-
-  useEffect(() => {
-    const fetchCsrfToken = async () => {
-        try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/csrf/`, {
-              credentials: 'include'
-          });
-          if (!res.ok) {
-              throw new Error('Failed to fetch CSRF token from server.');
-          }
-          const data = await res.json();
-          setCsrfToken(data.csrfToken); 
-          console.log("CSRF token fetched and stored in state.");
-        } catch (error) {
-          console.error("Failed to fetch CSRF token:", error);
-          // 可以在此設定錯誤訊息到畫面上
-          setErrors({ form: ["Security token initialization failed. Please refresh."] });
-        }
-      };
-  
-      fetchCsrfToken();
-  }, []);
 
   useEffect(() => {
     if (isEditMode) {
@@ -60,15 +42,10 @@ export default function ClientForm({
   }, [initialData, isEditMode])
 
   const handleSubmit = async (e: FormEvent) => {
+    if (!protectedFetch) return;
     e.preventDefault()
     setIsSubmitting(true)
     setErrors({})
-
-    if (!csrfToken) {
-        setErrors({ form: ["Security token not found. Please refresh and try again."] });
-        setIsSubmitting(false);
-        return;
-      }
 
     const apiUrl = isEditMode
       ? `${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/clients/${initialData.id}/`
@@ -76,13 +53,8 @@ export default function ClientForm({
     const method = isEditMode ? "PUT" : "POST"
 
     try {
-        const response = await fetch(apiUrl, {
+        const response = await protectedFetch(apiUrl, {
         method: method,
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfToken,
-        },
-        credentials: "include",
         body: JSON.stringify({
             name,
             is_active: isActive,

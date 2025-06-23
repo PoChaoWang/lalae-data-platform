@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from "next-auth/react";
 import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
-import SelectClientStep from '@/components/connections/SelectClientStep';
+import SelectClientStep from '@/components/SelectClientStep';
 import SelectDataSourceStep from '@/components/connections/SelectDataSourceStep';
 import ConnectionForm from '@/components/connections/ConnectionForm';
 import { SelectableClient, DataSource, Connection } from '@/lib/definitions'; 

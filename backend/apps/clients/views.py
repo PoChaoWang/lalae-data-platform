@@ -70,14 +70,14 @@ class ClientViewSet(viewsets.ModelViewSet):
             # from rest_framework.exceptions import APIException
             # raise APIException("Failed to perform post-creation tasks.")
 
-@ensure_csrf_cookie
-def get_csrf_token(request):
-    """
-    這個 view 的唯一目的，就是確保 CSRF cookie
-    被設定在 client 的瀏覽器中。
-    """
-    token = get_token(request)
-    return JsonResponse({'csrfToken': token})
+# @ensure_csrf_cookie
+# def get_csrf_token(request):
+#     """
+#     這個 view 的唯一目的，就是確保 CSRF cookie
+#     被設定在 client 的瀏覽器中。
+#     """
+#     token = get_token(request)
+#     return JsonResponse({'csrfToken': token})
 
 class ClientListView(LoginRequiredMixin, ListView):
     model = Client

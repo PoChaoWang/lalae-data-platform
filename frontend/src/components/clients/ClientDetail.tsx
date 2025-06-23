@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Users, Database, Calendar, User, AlertTriangle, Trash2, X, Shield } from "lucide-react";
+import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
+const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL
 
 export default function ClientDetail() {
   const params = useParams();
@@ -27,19 +28,18 @@ export default function ClientDetail() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const { protectedFetch } = useProtectedFetch();
 
-  const [csrfToken, setCsrfToken] = useState<string | null>(null);
 
   useEffect(() => {
     // 如果 clientId 不存在，則不執行 fetch
     if (!clientId) return;
 
     const fetchClient = async () => {
+      if (!protectedFetch) return;
       setLoading(true);
       try {
-        const response = await fetch(`${API_BASE_URL}/clients/${clientId}/`, {
-          credentials: 'include', // 確保請求時攜帶 cookie
-        });
+        const response = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${clientId}/`);
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -58,43 +58,19 @@ export default function ClientDetail() {
       }
     };
 
-    const fetchCsrfToken = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/clients/csrf/`, {
-            credentials: 'include'
-        });
-        if (!res.ok) throw new Error('Failed to fetch CSRF token from server.');
-        const data = await res.json();
-        setCsrfToken(data.csrfToken);
-      } catch (error) {
-        console.error("Failed to fetch CSRF token for delete:", error);
-        setDeleteError("Could not initialize security token. Please refresh.");
-      }
-    };
-
     fetchClient();
-    fetchCsrfToken();
-  }, [clientId]);
+  }, [clientId, protectedFetch]);
 
   // --- Handlers ---
   const handleDeleteClient = async () => {
+    if (!protectedFetch) return;
     if (!client || !isDeleteEnabled) return;
     setIsDeleting(true);
     setDeleteError('');
 
-    if (!csrfToken) {
-      setDeleteError('Security token is missing. Please refresh the page.');
-      setIsDeleting(false);
-      return;
-    }
-
     try {
-      const response = await fetch(`${API_BASE_URL}/clients/${client.id}/`, {
+      const response = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${client.id}/`, {
         method: 'DELETE',
-        headers: {
-          'X-CSRFToken': csrfToken,
-        },
-        credentials: 'include',
       });
 
       if (response.status === 204) {

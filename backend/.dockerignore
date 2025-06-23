@@ -12,3 +12,4 @@ build/
 **/templates/
 **/static/
 dump.rdb
+**/forms.py

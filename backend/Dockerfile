@@ -4,8 +4,6 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# 4. 安裝 Python 依賴：使用 pip 安裝所有 requirements.txt 中列出的套件。
-#    --no-cache-dir 可以減少建置時的暫存文件，讓映像檔更小。
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 5. 複製整個 Django 專案到容器的工作目錄。

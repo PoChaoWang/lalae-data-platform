@@ -1,0 +1,14 @@
+.git/
+.gitignore
+.env
+__pycache__/
+*.pyc
+*.sqlite3
+venv/
+node_modules/
+dist/
+build/
+*.log
+**/templates/
+**/static/
+dump.rdb

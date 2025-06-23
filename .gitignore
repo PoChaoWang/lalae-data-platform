@@ -26,3 +26,9 @@ node_modules/
 node_modules
 
 **/zzz*
+**/templates/
+**/static/
+**/__pycache__/
+__pycache__/
+*.pyc
+*.pyo

@@ -12,7 +12,7 @@ function isTokenExpired(expiryTime: number | undefined): boolean {
   return Date.now() / 1000 > expiryTime - 300; 
 }
 
-export const authOptions: AuthOptions = {
+const authOptions: AuthOptions = {
   session: {
     strategy: 'jwt',
   },

@@ -19,8 +19,7 @@ sturture.md
 .cursorignore
 frondend-sturture.md
 
-package.json
-package-lock.json
+
 v0/
 node_modules/
 node_modules

@@ -13,11 +13,7 @@ import { Trash2, AlertCircle } from 'lucide-react';
 
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-interface QueryDetailsPageProps {
-  queryId?: number | null;
-}
-
-export default function QueryDetailsPage({ queryId: propQueryId }: QueryDetailsPageProps) {
+export default function QueryDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const queryId = typeof params.queryId === 'string' ? parseInt(params.queryId, 10) : null;

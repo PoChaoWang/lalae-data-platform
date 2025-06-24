@@ -1,7 +1,7 @@
 // /app/(main)/connections/new/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from "next-auth/react";
 import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
@@ -10,11 +10,10 @@ import SelectDataSourceStep from '@/components/connections/SelectDataSourceStep'
 import ConnectionForm from '@/components/connections/ConnectionForm';
 import { SelectableClient, DataSource, Connection } from '@/lib/definitions'; 
 import ProtectedComponent from '@/components/ProtectedComponent'; 
-import { ArrowLeft, ArrowRight, Check, Users, Database, Zap } from 'lucide-react'; // Import icons
+import { ArrowLeft, ArrowRight, Check, Users, Database, Zap } from 'lucide-react';
 
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
-
-export default function NewConnectionPage() {
+function NewConnectionContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [step, setStep] = useState(1);
@@ -41,7 +40,6 @@ export default function NewConnectionPage() {
 
       try {
         if (cloneId) {
-          // --- 處理複製邏輯 (最高優先級) ---
           const connRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`);
           if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
           const clonedConnectionData: Connection = await connRes.json();
@@ -60,7 +58,7 @@ export default function NewConnectionPage() {
             displayName: `${clonedConnectionData.display_name} (Copy)`,
             config: clonedConnectionData.config
           });
-          setStep(3); // 直接跳到第三步
+          setStep(3); 
 
         } else if (clientId) {
           if (!selectedClient || selectedClient.id !== clientId) {
@@ -112,10 +110,9 @@ const handleDataSourceSelect = (dataSource: DataSource) => {
 };
 
 const handleBack = () => {
-    router.back(); // Simplifies back navigation
+    router.back(); 
 };
 
-// --- ✨ DYNAMIC TITLE AND STEP CONFIG ---
 const stepConfig = [
     { number: 1, title: "Select Client", icon: <Users className="w-6 h-6" /> },
     { number: 2, title: "Select Data Source", icon: <Database className="w-6 h-6" /> },
@@ -128,7 +125,6 @@ const getTitle = () => {
    return stepConfig.find(s => s.number === step)?.title || "Create New Connection";
 };
 
-// --- ✨ RENDER METHODS FROM WIZARD ---
 const renderStepIndicator = () => (
     <div className="flex items-center justify-center mb-8">
         {stepConfig.map((s, index) => (
@@ -148,7 +144,6 @@ const renderStepIndicator = () => (
     </div>
 );
 
-// --- ✨ MAIN RENDER WITH NEW WIZARD STYLING ---
 return (
     <ProtectedComponent>
         <div className="min-h-screen bg-gray-900 text-white p-6 relative overflow-hidden">
@@ -202,5 +197,13 @@ return (
             </div>
         </div>
     </ProtectedComponent>
-);
+  );
+}
+
+export default function NewConnectionPage() {
+  return (
+      <Suspense fallback={<div>Loading connection page...</div>}>
+          <NewConnectionContent />
+      </Suspense>
+  );
 }

@@ -5,6 +5,7 @@ from allauth.socialaccount.models import SocialToken, SocialAccount
 from apps.clients.models import Client
 import json
 import pytz
+from django.core.cache import cache
 
 timezone = pytz.timezone('Asia/Taipei')
 
@@ -100,6 +101,20 @@ class Connection(models.Model):
 
     def __str__(self):
         return f"{self.display_name} ({self.data_source.get_name_display()})"
+    
+    def get_last_execution_cached(self):
+        """
+        獲取最近一次執行紀錄並快取。
+        """
+        cache_key = f"last_execution_connection_{self.pk}"
+        last_execution = cache.get(cache_key)
+        
+        if last_execution is None:
+            last_execution = self.executions.order_by('-started_at').first()
+            if last_execution:
+                # 快取 1 分鐘，因為執行狀態可能快速變化
+                cache.set(cache_key, last_execution, 60) 
+        return last_execution
     
     def get_access_token(self):
         """獲取有效的 access token"""

@@ -20,10 +20,13 @@ from celery.schedules import crontab
 env = environ.Env(
     DEBUG=(bool, False),
     GOOGLE_CLOUD_PROJECT_ID=(str, ""),
-    GOOGLE_APPLICATION_CREDENTIALS=(str, ""),
     SUPABASE_DATABASE_PASSWORD=(str, ""),
     EMAIL_HOST_USER=(str, ""),
     EMAIL_HOST_PASSWORD=(str, ""),
+    GOOGLE_ADS_DEVELOPER_TOKEN=(str, ""), 
+    FACEBOOK_APP_ID=(str, ""), 
+    FACEBOOK_APP_SECRET=(str, ""), 
+    REDIS_URL=(str, "redis://localhost:6379"),
 )
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -36,12 +39,17 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 # Get environment variables
 GOOGLE_CLOUD_PROJECT_ID = env("GOOGLE_CLOUD_PROJECT_ID")
-GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+# GOOGLE_APPLICATION_CREDENTIALS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 GOOGLE_ADS_DEVELOPER_TOKEN = env("GOOGLE_ADS_DEVELOPER_TOKEN")
 
 FACEBOOK_APP_ID = env("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = env("FACEBOOK_APP_SECRET")
+REDIS_URL = env("REDIS_URL")
+
+
+REDIS_CACHE_URL = f"{REDIS_URL}/1"
+REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
 
@@ -50,13 +58,13 @@ if not GOOGLE_CLOUD_PROJECT_ID:
         "GOOGLE_CLOUD_PROJECT_ID environment variable is not set"
     )
 
-if not GOOGLE_APPLICATION_CREDENTIALS:
-    raise ImproperlyConfigured(
-        "GOOGLE_APPLICATION_CREDENTIALS environment variable is not set"
-    )
+# if not GOOGLE_APPLICATION_CREDENTIALS:
+#     raise ImproperlyConfigured(
+#         "GOOGLE_APPLICATION_CREDENTIALS environment variable is not set"
+#     )
 
 # Set the environment variable for Google Cloud credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
+# os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = GOOGLE_APPLICATION_CREDENTIALS
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -73,14 +81,7 @@ DEBUG = env("DEBUG", default=True)
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
-    '4580-114-24-82-104.ngrok-free.app',
-    '.ngrok-free.app',
-]
-
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:*',
-    'https://4580-114-24-82-104.ngrok-free.app',
-    'https://*.ngrok-free.app', 
+    'lalae-cloud-run-302883063343.asia-east1.run.app',
 ]
 
 # Application definition
@@ -226,13 +227,38 @@ LOGIN_URL = '/accounts/login/'
 # Password Reset Timeout (in seconds)
 PASSWORD_RESET_TIMEOUT = 259200  # 3 days
 
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_CACHE_URL, # 建議使用不同的資料庫編號
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "CONNECTION_POOL_KWARGS": {
+                "max_connections": 20,  # Upstash 有連接限制，建議降低
+                "retry_on_timeout": True,
+                "socket_connect_timeout": 5,
+                "socket_timeout": 5,
+                "health_check_interval": 30,
+            },
+            "IGNORE_EXCEPTIONS": True,
+            "SSL_CERT_REQS": None,
+        },
+        "KEY_PREFIX": "django_api_cache", # 可選：為您的快取鍵添加前綴
+        "TIMEOUT": 60 * 60 # 預設快取有效期，例如 1 小時
+    }
+}
+
 # Celery Configuration
-CELERY_BROKER_URL = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+# CELERY_BROKER_URL = "redis://localhost:6379/0"
+# CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
+CELERY_BROKER_URL = REDIS_CELERY_URL
+CELERY_RESULT_BACKEND = REDIS_CELERY_URL
+
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+
 CELERY_BROKER_TRANSPORT = "redis"
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "visibility_timeout": 3600,
@@ -408,15 +434,15 @@ CORS_ALLOW_CREDENTIALS = True
 # 在開發時，我們需要放寬 SameSite 設定。
 # 注意：在正式上線環境 (production) 且使用不同網域時，需要更嚴謹的設定。
 SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
+# CSRF_COOKIE_SAMESITE = 'None'
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://30e1-114-24-81-73.ngrok-free.app',
-    "http://127.0.0.1:3000",
-    "https://30e1-114-24-81-73.ngrok-free.app",
-]
+# CSRF_TRUSTED_ORIGINS = [
+#     'https://30e1-114-24-81-73.ngrok-free.app',
+#     "http://127.0.0.1:3000",
+#     "https://30e1-114-24-81-73.ngrok-free.app",
+# ]
 
 SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
 
 

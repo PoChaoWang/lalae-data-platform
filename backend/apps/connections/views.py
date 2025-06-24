@@ -2,14 +2,6 @@
 import logging
 import urllib.parse
 from django.shortcuts import render, get_object_or_404, redirect
-from django.views.generic import (
-    ListView,
-    DetailView,
-    CreateView,
-    UpdateView,
-    DeleteView,
-    TemplateView,
-)
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy, reverse
 from django.contrib.auth.decorators import login_required
@@ -19,41 +11,26 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.views import View
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
-from django.middleware.csrf import get_token
 import facebook
-import requests # Add this for Facebook OAuth token exchange
+import requests 
 from allauth.socialaccount.models import SocialApp
-# Google specific (minimal, only for what's left in views)
-from google.auth import default
-from googleapiclient.discovery import build
-from google.ads.googleads.client import GoogleAdsClient
-
+from django_redis.exceptions import ConnectionInterrupted
 from allauth.socialaccount.models import SocialAccount, SocialToken
 from allauth.socialaccount.providers.oauth2.views import OAuth2CallbackView
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 import json
 
-# from apps.clients.models import Client # Already imported below
-
 # App-specific imports
 from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution, Client
 from django.db.models import Q
-from .forms import BaseConnectionForm, GoogleAdsForm, FacebookAdsForm, GoogleSheetForm
-from apps.clients.models import Client  # Assuming this path is correct
-
-# Import refactored OAuth and DTS logic from apis/google_oauth.py
+from apps.clients.models import Client 
 from .apis.google_oauth import (
     oauth_authorize as api_oauth_authorize,
-    _refresh_user_social_token,
-    run_custom_gaql_and_save,
-    get_google_ads_page_context   
 )
 
 # Import Facebook Ads API client
 from .apis.facebook_ads import (
     FacebookAdsAPIClient, 
-    get_facebook_ads_page_context, # This will be used
     get_facebook_oauth_url,
     get_facebook_fields_structure 
 )
@@ -70,7 +47,7 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from .models import GoogleAdsField
 from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
 from allauth.socialaccount.models import SocialToken
-
+from django.core.cache import cache
 from .serializers import ConnectionSerializer, ClientSerializer, DataSourceSerializer, ConnectionListSerializer, ConnectionExecutionSerializer
 
 logger = logging.getLogger(__name__)
@@ -92,17 +69,11 @@ class DataSourceViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = 'name'
 
 class ConnectionViewSet(viewsets.ModelViewSet):
-    """
-    一個 ViewSet 用於檢視和編輯 Connection 實例。
-    """
     serializer_class = ConnectionSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
     
     def get_queryset(self):
-        """
-        此 ViewSet 應該只回傳經過認證的使用者有權限的 connections。
-        """
         user = self.request.user
         if user.is_superuser:
             return Connection.objects.all().order_by("-created_at")
@@ -111,21 +82,53 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         return Connection.objects.filter(client__in=accessible_clients).select_related('data_source', 'client').order_by("-created_at")
     
     def get_serializer_class(self):
-        """
-        根據不同的 action 返回不同的序列化器。
-        """
         if self.action == 'list':
             return ConnectionListSerializer # 列表視圖使用輕量級序列化器
         return self.serializer_class # 其他操作 (如 retrieve, create, update)
+    
+    def list(self, request, *args, **kwargs):
+        user = self.request.user
+        cache_key = f"connections_list_for_user_{user.id}"
+        
+        # 安全地嘗試從快取獲取數據
+        cached_data = None
+        try:
+            cached_data = cache.get(cache_key)
+        except (ConnectionInterrupted, Exception) as e:
+            logger.warning(f"Cache get failed for user {user.id}: {e}")
+        
+        if cached_data:
+            logger.info(f"Serving connections list from cache for user {user.id}")
+            return Response(cached_data)
+
+        # 從資料庫查詢數據
+        queryset = self.filter_queryset(self.get_queryset()) 
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response_data = self.get_paginated_response(serializer.data).data
+        else:
+            serializer = self.get_serializer(queryset, many=True)
+            response_data = serializer.data
+        
+        # 安全地嘗試將結果存入快取
+        try:
+            cache.set(cache_key, response_data, 60 * 5)
+            logger.info(f"Connections list for user {user.id} cached successfully.")
+        except (ConnectionInterrupted, Exception) as e:
+            logger.warning(f"Cache set failed for user {user.id}: {e}")
+        
+        return Response(response_data)
 
     def perform_create(self, serializer):
-        """
-        在建立新連線時，自動設定 user 和初始狀態。
-        """
-        # 注意：client_id 和 data_source_id 的處理已移至 Serializer 的 create 方法中
         connection = serializer.save(user=self.request.user, status="PENDING")
-        
-        # 觸發非同步任務
+        user_id = self.request.user.id
+        cache_key = f"connections_list_for_user_{user_id}"
+        cache.delete(cache_key)
+        logger.info(f"Cleared connections list cache for user {user_id} after creating connection {connection.pk}")
+
+
         logger.info(f"Triggering sync task for new connection {connection.pk}")
         sync_connection_data_task.delay(
             connection.pk,
@@ -134,25 +137,23 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='clone')
     def clone(self, request, pk=None):
-        """
-        複製一個現有的 Connection。
-        對應前端的 'Clone' 按鈕 -> POST /api/connections/{id}/clone/
-        """
         original_connection = self.get_object()
+        user_id = request.user.id
         
-        # 建立新物件，但不儲存
         new_connection = original_connection
-        new_connection.pk = None  # 設為 None 來建立新紀錄
+        new_connection.pk = None  
         new_connection.id = None
         new_connection.display_name = f"{original_connection.display_name} (Copy)"
         new_connection.status = "PENDING"
-        new_connection.created_at = None # 會自動設定
-        new_connection.updated_at = None # 會自動設定
-        
-        # 儲存新物件
+        new_connection.created_at = None
+        new_connection.updated_at = None 
         new_connection.save()
         
         logger.info(f"Cloned connection {original_connection.pk} to new connection {new_connection.pk}")
+
+        cache_key = f"connections_list_for_user_{user_id}"
+        cache.delete(cache_key) 
+        logger.info(f"Cleared connections list cache for user {user_id} after cloning connection {new_connection.pk}")
         
         # 也可以選擇性觸發一次同步
         sync_connection_data_task.delay(
@@ -163,12 +164,51 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(new_connection)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        user_id = self.request.user.id
+        super().perform_update(serializer)
+        
+        # 清除列表快取
+        cache_key_list = f"connections_list_for_user_{user_id}"
+        cache.delete(cache_key_list)
+        logger.info(f"Cleared connections list cache for user {user_id} after updating connection {instance.pk}")
+
+        # 清除單一 connection 的快取（如果有的話）
+        cache_key_detail = f"connection_detail_{instance.pk}"
+        cache.delete(cache_key_detail)
+        logger.info(f"Cleared detail cache for connection {instance.pk} after update.")
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        cache_key = f"connection_detail_{instance.pk}"
+
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            logger.info(f"Serving connection detail for {instance.pk} from cache.")
+            return Response(cached_data)
+
+        serializer = self.get_serializer(instance)
+        response_data = serializer.data
+        cache.set(cache_key, response_data, 60 * 10) # 快取 10 分鐘
+        logger.info(f"Connection detail for {instance.pk} cached.")
+        return Response(response_data)
+    
+    def perform_destroy(self, instance):
+        user_id = self.request.user.id
+        connection_pk = instance.pk
+        
+        super().perform_destroy(instance) 
+        cache_key_list = f"connections_list_for_user_{user_id}"
+        cache.delete(cache_key_list)
+        logger.info(f"Cleared connections list cache for user {user_id} after deleting connection {connection_pk}")
+
+        cache_key_detail = f"connection_detail_{connection_pk}"
+        cache.delete(cache_key_detail)
+        logger.info(f"Cleared detail cache for connection {connection_pk} after deletion.")
+
     @action(detail=True, methods=['post'], url_path='run-sync')
     def run_sync(self, request, pk=None):
-        """
-        手動觸發一次資料同步。
-        對應前端的 'Sync Now' 按鈕 -> POST /api/connections/{id}/run-sync/
-        """
         connection = self.get_object()
         if not connection.is_enabled:
             return Response(
@@ -188,9 +228,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['get'], url_path='executions')
     def executions(self, request, pk=None):
-        """
-        返回指定 Connection 的所有執行紀錄 (更健壯的版本)
-        """
         try:
             connection = self.get_object()
             execution_queryset = ConnectionExecution.objects.filter(connection=connection).order_by('-started_at')
@@ -202,7 +239,6 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         except Connection.DoesNotExist:
             return Response({"error": "Connection not found."}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            # 捕捉任何其他潛在錯誤，並返回 500 錯誤及訊息
             logger.error(f"Error fetching executions for connection {pk}: {e}", exc_info=True) 
             return Response(
                 {"error": "An internal server error occurred while fetching execution history."}, 
@@ -213,8 +249,16 @@ class ConnectionViewSet(viewsets.ModelViewSet):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_google_ads_resources(request):
-    resources = GoogleAdsField.objects.filter(category='RESOURCE').order_by('field_name')
-    data = [{'name': r.field_name, 'display': r.field_name.replace('_', ' ').title()} for r in resources]
+    cache_key = "google_ads_resources_list"
+    data = cache.get(cache_key)
+    if data is None:
+        resources = GoogleAdsField.objects.filter(category='RESOURCE').order_by('field_name')
+        data = [{'name': r.field_name, 'display': r.field_name.replace('_', ' ').title()} for r in resources]
+        cache.set(cache_key, data, 60 * 60 * 24) # 快取 24 小時，因為這些數據不太常變動
+        logger.info("Google Ads resources list cached.")
+    else:
+        logger.info("Serving Google Ads resources list from cache.")
+    
     return Response(data)
 
 @api_view(['GET'])
@@ -246,81 +290,94 @@ def get_facebook_ad_accounts(request):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_facebook_all_fields(request):
-    try:
-        # 直接呼叫我們新建的函式，它會回傳一個乾淨的 Python 字典
-        all_fields_data = get_facebook_fields_structure()
-        return Response(all_fields_data)
+    cache_key = "facebook_all_fields_structure"
+    all_fields_data = cache.get(cache_key)
 
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Occurred error when loading Facebook field definitions: {e}", exc_info=True)
-        return Response(
-            {"error": "Server configuration error: Could not load Facebook field definitions."}, 
-            status=500
-        )
-    except Exception as e:
-        logger.error(f"Process get_facebook_all_fields error: {e}", exc_info=True)
-        return Response(
-            {"error": "An unexpected server error occurred."}, 
-            status=500
-        )
+    if all_fields_data is None:
+        try:
+            all_fields_data = get_facebook_fields_structure() # 假設這個函數讀取靜態文件
+            cache.set(cache_key, all_fields_data, 60 * 60 * 24 * 7) # 快取一週
+            logger.info("Facebook all fields structure cached.")
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            logger.error(f"Occurred error when loading Facebook field definitions: {e}", exc_info=True)
+            return Response(
+                {"error": "Server configuration error: Could not load Facebook field definitions."}, 
+                status=500
+            )
+        except Exception as e:
+            logger.error(f"Process get_facebook_all_fields error: {e}", exc_info=True)
+            return Response(
+                {"error": "An unexpected server error occurred."}, 
+                status=500
+            )
+    else:
+        logger.info("Serving Facebook all fields structure from cache.")
+
+    return Response(all_fields_data)
 
 @require_http_methods(["GET"])
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_compatible_google_ads_fields_api(request):
-    """
-    一個 API 端點，根據提供的 resource_name，回傳可用的欄位。
-    """
     resource_name = request.GET.get('resource')
     if not resource_name:
         return JsonResponse({'error': 'Resource parameter is required.'}, status=400)
 
-    try:
-        # 1. 找到 Resource 物件
-        resource_field = GoogleAdsField.objects.get(field_name=resource_name, category='RESOURCE')
+    cache_key = f"google_ads_compatible_fields_{resource_name}"
+    response_data = cache.get(cache_key)
 
-        # 2. 透過我們建立的 `compatible_fields` 關聯，獲取所有可用的欄位
-        compatible_fields = resource_field.compatible_fields.all()
-        own_attributes = GoogleAdsField.objects.filter(
-            Q(category='ATTRIBUTE') & Q(field_name__startswith=f"{resource_name}.")
-        )
-        all_fields = sorted(
-            list(set(chain(compatible_fields, own_attributes))),
-            key=lambda x: (x.category, x.field_name)
-        )
-        
-        # 3. 將結果分類打包成 JSON
-        response_data = {
-            'metrics': [],
-            'segments': [],
-            'attributes': [] # 有些 Resource 也會關聯到其他 ATTRIBUTE
-        }
-        
-        for field in all_fields:
-            full_name = field.field_name
+    if response_data is None:
+        try:
+            # 1. 找到 Resource 物件
+            resource_field = GoogleAdsField.objects.get(field_name=resource_name, category='RESOURCE')
 
-            parts = full_name.split('.')
-            display_name = ('.'.join(parts[1:]) if len(parts) > 1 else full_name).replace('_', ' ')
-
-            field_data = {
-                'name': full_name,         
-                'display': display_name    
+            # 2. 透過我們建立的 `compatible_fields` 關聯，獲取所有可用的欄位
+            compatible_fields = resource_field.compatible_fields.all()
+            own_attributes = GoogleAdsField.objects.filter(
+                Q(category='ATTRIBUTE') & Q(field_name__startswith=f"{resource_name}.")
+            )
+            all_fields = sorted(
+                list(set(chain(compatible_fields, own_attributes))),
+                key=lambda x: (x.category, x.field_name)
+            )
+            
+            # 3. 將結果分類打包成 JSON
+            response_data = {
+                'metrics': [],
+                'segments': [],
+                'attributes': [] # 有些 Resource 也會關聯到其他 ATTRIBUTE
             }
             
-            if field.category == 'METRIC':
-                response_data['metrics'].append(field_data)
-            elif field.category == 'SEGMENT':
-                response_data['segments'].append(field_data)
-            elif field.category == 'ATTRIBUTE':
-                 response_data['attributes'].append(field_data)
+            for field in all_fields:
+                full_name = field.field_name
 
-        return JsonResponse(response_data)
+                parts = full_name.split('.')
+                display_name = ('.'.join(parts[1:]) if len(parts) > 1 else full_name).replace('_', ' ')
 
-    except GoogleAdsField.DoesNotExist:
-        return JsonResponse({'error': f'Resource "{resource_name}" not found.'}, status=404)
-    except Exception as e:
-        logger.error(f"API Error in get_compatible_google_ads_fields_api: {e}", exc_info=True)
-        return JsonResponse({'error': 'An internal server error occurred.'}, status=500)
+                field_data = {
+                    'name': full_name,         
+                    'display': display_name    
+                }
+                
+                if field.category == 'METRIC':
+                    response_data['metrics'].append(field_data)
+                elif field.category == 'SEGMENT':
+                    response_data['segments'].append(field_data)
+                elif field.category == 'ATTRIBUTE':
+                    response_data['attributes'].append(field_data)
+
+            cache.set(cache_key, response_data, 60 * 60) # 快取 1 小時
+            logger.info(f"Compatible Google Ads fields for {resource_name} cached.")
+
+        except GoogleAdsField.DoesNotExist:
+            return JsonResponse({'error': f'Resource "{resource_name}" not found.'}, status=404)
+        except Exception as e:
+            logger.error(f"API Error in get_compatible_google_ads_fields_api: {e}", exc_info=True)
+            return JsonResponse({'error': 'An internal server error occurred.'}, status=500)
+    else:
+        logger.info(f"Serving compatible Google Ads fields for {resource_name} from cache.")
+
+    return JsonResponse(response_data)
 
 # @login_required
 def client_oauth_authorize(request, client_id): # client_id is UUID here

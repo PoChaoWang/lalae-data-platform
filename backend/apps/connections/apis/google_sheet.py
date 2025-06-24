@@ -17,28 +17,33 @@ logger = logging.getLogger(__name__)
 
 class GoogleSheetAPIClient:
     def __init__(self):
+        # try:
+        #     # 使用 settings.py 中定義的路徑
+        #     self.credentials = service_account.Credentials.from_service_account_file(
+        #         settings.GOOGLE_APPLICATION_CREDENTIALS,
+        #         scopes=[
+        #             "https://www.googleapis.com/auth/spreadsheets.readonly",
+        #             "https://www.googleapis.com/auth/drive.readonly",
+        #             "https://www.googleapis.com/auth/bigquery",
+        #         ],
+        #     )
+        #     self.service_account_email = self.credentials.service_account_email
+        #     self.bq_client = bigquery.Client(
+        #         credentials=self.credentials, project=self.credentials.project_id
+        #     )
+        #     self.sheets_service = build("sheets", "v4", credentials=self.credentials)
+        #     self.drive_service = build("drive", "v3", credentials=self.credentials)
+        # except Exception as e:
+        #     logger.error(
+        #         f"[GoogleSheetAPIClient] Failed to initialize clients: {e}",
+        #         exc_info=True,
+        #     )
+        #     raise
         try:
-            # 使用 settings.py 中定義的路徑
-            self.credentials = service_account.Credentials.from_service_account_file(
-                settings.GOOGLE_APPLICATION_CREDENTIALS,
-                scopes=[
-                    "https://www.googleapis.com/auth/spreadsheets.readonly",
-                    "https://www.googleapis.com/auth/drive.readonly",
-                    "https://www.googleapis.com/auth/bigquery",
-                ],
-            )
-            self.service_account_email = self.credentials.service_account_email
-            self.bq_client = bigquery.Client(
-                credentials=self.credentials, project=self.credentials.project_id
-            )
             self.sheets_service = build("sheets", "v4", credentials=self.credentials)
             self.drive_service = build("drive", "v3", credentials=self.credentials)
         except Exception as e:
-            logger.error(
-                f"[GoogleSheetAPIClient] Failed to initialize clients: {e}",
-                exc_info=True,
-            )
-            raise
+            raise RuntimeError(f"Failed to initialize Google Sheet API Client: {str(e)}")
 
     def check_sheet_permissions(self, sheet_id: str) -> bool:
         """

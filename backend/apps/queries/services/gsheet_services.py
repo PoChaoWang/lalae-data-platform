@@ -6,25 +6,23 @@ import json
 
 class GSheetService:
     def __init__(self):
-        # 確保你的服務帳戶金鑰文件存在
-        # 通常會將服務帳戶金鑰的內容作為環境變量或從安全配置中讀取
-        # 這裡假設 `GOOGLE_APPLICATION_CREDENTIALS` 環境變量指向金鑰文件路徑
-        # 或直接使用 JSON 字符串
+        # try:
+        #     cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        #     if not cred_path:
+        #         cred_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+        #         if cred_json:
+        #             info = json.loads(cred_json)
+        #             self.credentials = service_account.Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+        #         else:
+        #             raise ValueError("Google service account credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_JSON.")
+        #     else:
+        #         self.credentials = service_account.Credentials.from_service_account_file(cred_path, scopes=['https://www.googleapis.com/auth/spreadsheets'])
+        #     self.service = build('sheets', 'v4', credentials=self.credentials)
+        # except Exception as e:
+        #     raise RuntimeError(f"Failed to initialize Google Sheets Service: {str(e)}")
         try:
-            # 從環境變量獲取金鑰文件路徑
-            cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-            if not cred_path:
-                # 或者直接從環境變量讀取 JSON 內容
-                cred_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-                if cred_json:
-                    info = json.loads(cred_json)
-                    self.credentials = service_account.Credentials.from_service_account_info(info, scopes=['https://www.googleapis.com/auth/spreadsheets'])
-                else:
-                    raise ValueError("Google service account credentials not found. Set GOOGLE_APPLICATION_CREDENTIALS or GOOGLE_SERVICE_ACCOUNT_JSON.")
-            else:
-                self.credentials = service_account.Credentials.from_service_account_file(cred_path, scopes=['https://www.googleapis.com/auth/spreadsheets'])
-            self.service = build('sheets', 'v4', credentials=self.credentials)
-        except Exception as e:
+            self.service = build('sheets', 'v4')
+        except Exception as e:    
             raise RuntimeError(f"Failed to initialize Google Sheets Service: {str(e)}")
 
     def write_to_sheet(self, sheet_id: str, tab_name: str, column_names: list, data: list, append_mode: bool):

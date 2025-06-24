@@ -422,10 +422,12 @@ USE_X_FORWARDED_HOST = True
 
 
 CORS_ALLOWED_ORIGINS = [
-    "https://30e1-114-24-81-73.ngrok-free.app",
     "http://127.0.0.1:3000",
     "http://localhost:3000",
-    "http://192.168.1.104:3000",
+]
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://lalae-data-platform-.*\.vercel\.app$",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

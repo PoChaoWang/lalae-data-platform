@@ -1,0 +1,36 @@
+# Dockerfile.worker
+
+FROM python:3.12.11-slim
+
+WORKDIR /app
+
+# 複製你的應用程式碼
+COPY . /app/ 
+
+# 安裝依賴
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 安裝 supervisord
+RUN apt-get update && apt-get install -y supervisor \
+    && rm -rf /var/lib/apt/lists/*
+
+# 複製健康檢查 app
+COPY healthcheck_app.py /app/healthcheck_app.py
+
+# 複製針對 Worker 的 supervisord 配置
+COPY supervisord_worker.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 定義 Celery 應用程式名稱
+ENV CELERY_APP main # 假設你的 Celery 應用程式在 main.celery
+
+# 暴露端口 (Cloud Run 會使用這個端口進行健康檢查)
+EXPOSE 8080
+
+# 容器啟動命令
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+
+# 1GiB or 2GiB
+# BigQuery Data Editor / Admin
+# Redis access
+# Google

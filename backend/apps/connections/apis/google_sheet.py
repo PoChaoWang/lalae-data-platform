@@ -5,6 +5,7 @@ from google.api_core.exceptions import NotFound, Forbidden, GoogleAPICallError
 from googleapiclient.discovery import build
 from google.cloud import bigquery
 from django.conf import settings
+import google.auth
 import io
 import csv
 
@@ -17,32 +18,32 @@ logger = logging.getLogger(__name__)
 
 class GoogleSheetAPIClient:
     def __init__(self):
-        # try:
-        #     # 使用 settings.py 中定義的路徑
-        #     self.credentials = service_account.Credentials.from_service_account_file(
-        #         settings.GOOGLE_APPLICATION_CREDENTIALS,
-        #         scopes=[
-        #             "https://www.googleapis.com/auth/spreadsheets.readonly",
-        #             "https://www.googleapis.com/auth/drive.readonly",
-        #             "https://www.googleapis.com/auth/bigquery",
-        #         ],
-        #     )
-        #     self.service_account_email = self.credentials.service_account_email
-        #     self.bq_client = bigquery.Client(
-        #         credentials=self.credentials, project=self.credentials.project_id
-        #     )
-        #     self.sheets_service = build("sheets", "v4", credentials=self.credentials)
-        #     self.drive_service = build("drive", "v3", credentials=self.credentials)
-        # except Exception as e:
-        #     logger.error(
-        #         f"[GoogleSheetAPIClient] Failed to initialize clients: {e}",
-        #         exc_info=True,
-        #     )
-        #     raise
         try:
+            self.credentials, self.project_id = google.auth.default( #
+                scopes=[
+                    "https://www.googleapis.com/auth/spreadsheets",         
+                    "https://www.googleapis.com/auth/drive.readonly",    
+                    "https://www.googleapis.com/auth/bigquery",           
+                    "https://www.googleapis.com/auth/bigquery.insertdata", 
+                ]
+            )
+            
+            self.service_account_email = getattr(self.credentials, 'service_account_email', 'unknown_service_account')
+            
+            # 初始化 BigQuery 客戶端
+            self.bq_client = bigquery.Client(
+                credentials=self.credentials, project=self.project_id # 使用獲取的 project_id
+            )
+            
+            # 初始化 Google Sheets 和 Drive 服務
             self.sheets_service = build("sheets", "v4", credentials=self.credentials)
             self.drive_service = build("drive", "v3", credentials=self.credentials)
+
         except Exception as e:
+            logger.error(
+                f"[GoogleSheetAPIClient] Failed to initialize clients due to credential or API setup: {e}",
+                exc_info=True,
+            )
             raise RuntimeError(f"Failed to initialize Google Sheet API Client: {str(e)}")
 
     def check_sheet_permissions(self, sheet_id: str) -> bool:

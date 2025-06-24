@@ -534,7 +534,7 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-orange-500/50">
+              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-orange-500/50 custom-scrollbar">
                 {data.recentConnectionExecutions.map((execution) => (
                   <div
                     key={execution.id}
@@ -591,7 +591,7 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-orange-500/50">
+              <div className="space-y-3 max-h-96 overflow-y-auto scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-orange-500/50 custom-scrollbar">
                 {data.recentQueryExecutions.map((execution) => {
                   // 找到對應的查詢定義
                   const query = data.queries.find((q) => q.id === execution.query)

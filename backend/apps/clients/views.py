@@ -1,26 +1,21 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.contrib.auth.decorators import login_required
-from django.views.generic import ListView, CreateView, DetailView, DeleteView
-from django.urls import reverse_lazy
-from django.contrib import messages
 from .models import Client
-# from .forms import ClientForm
-from django.middleware.csrf import get_token
 import json
-from rest_framework import viewsets, permissions
+from rest_framework import viewsets, permissions, status
 from .serializers import ClientSerializer
-from django.views.decorators.csrf import ensure_csrf_cookie
-from django.http import JsonResponse, HttpResponse
 from rest_framework_simplejwt.authentication import JWTAuthentication
-
+from apps.clients.models import Client, ClientSetting
 import re
-
+from rest_framework.response import Response
 class ClientViewSet(viewsets.ModelViewSet):
 
     serializer_class = ClientSerializer
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [JWTAuthentication]
+    queryset = Client.objects.all()
+    serializer_class = ClientSerializer
+
+    MAX_CLIENTS_PER_USER = 2
+
     def get_queryset(self):
         user = self.request.user
         base_queryset = Client.objects.select_related('created_by')
@@ -31,26 +26,37 @@ class ClientViewSet(viewsets.ModelViewSet):
         return base_queryset.filter(settings__user=user).distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
-        """
-        在建立新物件時，自動將 created_by 設為當前登入的使用者。
-        """
         client = serializer.save(created_by=self.request.user)
+        user = self.request.user
+        current_clients_count = ClientSetting.objects.filter(user=user).count()
+
+        if not user.is_superuser: # 如果不是超級使用者，才檢查配額
+            current_clients_count = ClientSetting.objects.filter(user=user).count()
+            if current_clients_count >= self.MAX_CLIENTS_PER_USER:
+                return Response(
+                    {"detail": f"You can only create up to {self.MAX_CLIENTS_PER_USER} clients."},
+                    status=status.HTTP_403_FORBIDDEN # 返回 403 Forbidden
+                )
+
+        # 如果是超級使用者，或者非超級使用者但未達到配額，則繼續執行創建邏輯
+        client = serializer.save(created_by=self.request.user) # 這行應該在配額檢查之後，確保只有通過檢查才創建
 
         try:
             # 清理名稱
             clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', client.name.lower())
             clean_name = re.sub(r'_+', '_', clean_name).strip('_')
-            
+
             # 清理 UUID - 移除 - 符號
             clean_id = str(client.id).replace('-', '_')
-            
+
             dataset_id = f"{clean_name}_{clean_id}"
-            
+
             # 設定 BigQuery dataset ID 並再次儲存
             client.bigquery_dataset_id = dataset_id
             client.save()
-            
+
             # 儲存客戶設定
+            # 假設 client.save_client_setting 是一個在 Client 模型中定義的方法
             client.save_client_setting(
                 user=self.request.user,
                 is_owner=True,
@@ -61,14 +67,17 @@ class ClientViewSet(viewsets.ModelViewSet):
 
             # 呼叫非同步任務來建立 BigQuery dataset
             client.create_bigquery_dataset_async(user_id=self.request.user.id)
-            
+
         except Exception as e:
-            # 如果後續步驟出錯，可以考慮刪除剛剛建立的 client，
-            # 或者至少記錄下錯誤。
+            # 如果後續步驟出錯，應該刪除剛剛建立的 client，並返回錯誤
+            client.delete() # 刪除已創建但後續操作失敗的 client
             print(f"Error during post-create operations for client {client.id}: {e}")
-            # 這裡可以引發一個錯誤，讓前端知道出了問題
-            # from rest_framework.exceptions import APIException
-            # raise APIException("Failed to perform post-creation tasks.")
+            return Response(
+                {"detail": f"Failed to complete client creation due to an internal error: {e}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED) 
 
 # @ensure_csrf_cookie
 # def get_csrf_token(request):

@@ -176,6 +176,24 @@ export default function ConnectionForm({ client, dataSource, initialData }: { cl
 
             {(dataSource.name === 'GOOGLE_ADS' || dataSource.name === 'FACEBOOK_ADS') && renderAuthCard()}
 
+
+          {/* Please remove the following note after pass the test */}  
+            {/* Google Ads Specific Note */}
+            {dataSource.name === 'GOOGLE_ADS' && (
+                <div className="bg-blue-900/50 text-blue-300 border border-blue-500/50 rounded-lg p-4 mt-4">
+                    <p><strong>Note for Google Ads:</strong> Due to the current developer token's access level, this connection might only be able to fetch data from <a href="https://developers.google.com/google-ads/api/docs/best-practices/test-accounts" target="_blank" rel="noopener noreferrer" className="underline">Google Ads test accounts</a>. Full data access from live production accounts requires a higher access level for the developer token, which is currently undergoing review. We appreciate your understanding.</p>
+                </div>
+            )}
+
+            {/* Facebook Ads Specific Note */}
+            {dataSource.name === 'FACEBOOK_ADS' && (
+                <div className="bg-blue-900/50 text-blue-300 border border-blue-500/50 rounded-lg p-4 mt-4">
+                    <p><strong>Note for Facebook Ads:</strong> Data retrieval from Facebook Ads requires a valid and active advertising account with appropriate permissions. We are actively working to confirm full data fetching capabilities with various account types. Your patience is appreciated.</p>
+                </div>
+            )}
+          {/* Please remove the following note after pass the test */}  
+
+          
             {/* Basic Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>

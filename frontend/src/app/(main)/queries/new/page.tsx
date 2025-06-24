@@ -1,7 +1,7 @@
 // /app/(main)/queries/new/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from "next-auth/react";
 import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
@@ -13,7 +13,7 @@ import { ArrowLeft, ArrowRight, Check, Users, Database, DatabaseZap } from 'luci
 
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 
-export default function NewQueriesPage() {
+function NewQueriesPageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const [step, setStep] = useState(1);
@@ -159,5 +159,13 @@ export default function NewQueriesPage() {
                 </div>
             </div>
         </ProtectedComponent>
+    );
+}
+
+export default function NewQueriesPage() {
+    return (
+        <Suspense fallback={<div className="text-center text-white min-h-screen bg-gray-900 flex items-center justify-center">Loading page...</div>}>
+            <NewQueriesPageContent />
+        </Suspense>
     );
 }

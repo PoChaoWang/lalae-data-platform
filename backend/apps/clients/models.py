@@ -30,39 +30,6 @@ class Client(models.Model):
         null=True,
         blank=True
     )
-    # OAuth related fields
-    # google_social_account = models.ForeignKey(
-    #     SocialAccount,
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name='clients',
-    #     limit_choices_to={'provider': 'google'}
-    # )
-    # oauth_status = models.CharField(
-    #     max_length=20,
-    #     choices=[
-    #         ('NOT_AUTHORIZED', 'Not Authorized'),
-    #         ('AUTHORIZED', 'Authorized')
-    #     ],
-    #     default='NOT_AUTHORIZED'
-    # )
-    # facebook_social_account = models.ForeignKey(
-    #     SocialAccount,
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name='facebook_clients',
-    #     limit_choices_to={'provider': 'facebook'}
-    # )
-    # facebook_oauth_status = models.CharField(
-    #     max_length=20,
-    #     choices=[
-    #         ('NOT_AUTHORIZED', 'Not Authorized'),
-    #         ('AUTHORIZED', 'Authorized')
-    #     ],
-    #     default='NOT_AUTHORIZED'
-    # )
 
     def __str__(self):
         return self.name
@@ -93,42 +60,6 @@ class Client(models.Model):
     def create_bigquery_dataset_async(self, user_id=None):
         if self.bigquery_dataset_id:
             create_bigquery_dataset_and_tables_task.delay(self.bigquery_dataset_id, user_id)
-
-    # def update_oauth_status(self):
-    #     """Update the OAuth status based on the current state"""
-    #     if not self.google_social_account:
-    #         self.oauth_status = 'NOT_AUTHORIZED'
-    #     else:
-    #         self.oauth_status = 'AUTHORIZED'
-    #     self.save(update_fields=['oauth_status'])
-
-    # def is_oauth_authorized(self):
-    #     """Check if the client has valid OAuth authorization"""
-    #     return self.oauth_status == 'AUTHORIZED'
-
-    # def revoke_oauth(self):
-    #     """Revoke OAuth authorization"""
-    #     self.google_social_account = None
-    #     self.oauth_status = 'NOT_AUTHORIZED'
-    #     self.save(update_fields=['google_social_account', 'oauth_status'])
-
-    # def update_facebook_oauth_status(self):
-    #     """Update Facebook OAuth status based on social account presence"""
-    #     if self.facebook_social_account:
-    #         self.facebook_oauth_status = 'AUTHORIZED'
-    #     else:
-    #         self.facebook_oauth_status = 'NOT_AUTHORIZED'
-    #     self.save(update_fields=['facebook_oauth_status'])
-
-    # def is_facebook_oauth_authorized(self):
-    #     """Check if Facebook OAuth is authorized"""
-    #     return bool(self.facebook_social_account and self.facebook_oauth_status == 'AUTHORIZED')
-
-    # def revoke_facebook_oauth(self):
-    #     """Revoke Facebook OAuth authorization"""
-    #     self.facebook_social_account = None
-    #     self.facebook_oauth_status = 'NOT_AUTHORIZED'
-    #     self.save(update_fields=['facebook_social_account', 'facebook_oauth_status'])
 
     def save_client_setting(self, user, is_owner=False, can_edit=False, can_view_gcp=False, can_manage_gcp=False):
         """Save or update client setting for a user.

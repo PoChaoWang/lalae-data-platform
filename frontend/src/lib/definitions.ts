@@ -30,8 +30,6 @@ export type SelectableClient = {
   id: string;
   name: string;
   bigquery_dataset_id: string;
-  facebook_social_account: SocialAccountInfo | null;
-  google_social_account: SocialAccountInfo | null;
 };
 
 export type SocialAccountInfo = {

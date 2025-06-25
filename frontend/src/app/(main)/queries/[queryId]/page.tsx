@@ -99,8 +99,6 @@ export default function QueryDetailsPage() {
     id: queryData.bigquery_dataset_id, // 或者使用一個 uuid 確保唯一性
     name: queryData.bigquery_dataset_id, // 這裡僅作展示，可能需要從其他地方獲取更友好的客戶名稱
     bigquery_dataset_id: queryData.bigquery_dataset_id,
-    facebook_social_account: null, // 編輯頁面不關心這些
-    google_social_account: null, // 編輯頁面不關心這些
   };
 
   return (

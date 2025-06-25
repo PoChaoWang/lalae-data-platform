@@ -222,31 +222,31 @@ def oauth_authorize(request, pk):
             f"{reverse('account_login')}?process=connect&provider=google&next={reverse('connections:oauth_callback')}"
         )
 
-def check_auth_status(request):
-    """檢查使用者的 Google 授權狀態"""
-    try:
-        social_account = SocialAccount.objects.get(user=request.user, provider="google")
-        social_token = SocialToken.objects.filter(
-            account=social_account, app__provider="google"
-        ).first()
+# def check_auth_status(request):
+#     """檢查使用者的 Google 授權狀態"""
+#     try:
+#         social_account = SocialAccount.objects.get(user=request.user, provider="google")
+#         social_token = SocialToken.objects.filter(
+#             account=social_account, app__provider="google"
+#         ).first()
 
-        is_authorized = bool(
-            social_token
-            and (
-                not social_token.expires_at or social_token.expires_at > timezone.now()
-            )
-        )
+#         is_authorized = bool(
+#             social_token
+#             and (
+#                 not social_token.expires_at or social_token.expires_at > timezone.now()
+#             )
+#         )
 
-        return JsonResponse(
-            {
-                "is_authorized": is_authorized,
-                "email": (
-                    social_account.extra_data.get("email", "") if is_authorized else ""
-                ),
-            }
-        )
-    except SocialAccount.DoesNotExist:
-        return JsonResponse({"is_authorized": False, "email": ""})
+#         return JsonResponse(
+#             {
+#                 "is_authorized": is_authorized,
+#                 "email": (
+#                     social_account.extra_data.get("email", "") if is_authorized else ""
+#                 ),
+#             }
+#         )
+#     except SocialAccount.DoesNotExist:
+#         return JsonResponse({"is_authorized": False, "email": ""})
 
 def build_custom_gaql(config, date_range_str="LAST_30_DAYS"):
     """

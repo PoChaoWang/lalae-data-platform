@@ -30,8 +30,11 @@ urlpatterns = [
         name="google_callback",
     ),
     path('facebook/oauth/callback/', views.facebook_oauth_callback, name='facebook_oauth_callback'),
-    path("check-auth-status/", views.check_auth_status, name="check_auth_status"),
     path("", include(router.urls)),
+
+    path('clients/<uuid:client_id>/social_accounts/', views.get_client_social_accounts, name='get_client_social_accounts'),
+    path('check-auth-status/', views.check_auth_status, name='check_auth_status'), # 修改後的通用 auth status
+    
 
     # # For Backend
     # path("", views.ConnectionListView.as_view(), name="connection_list"),

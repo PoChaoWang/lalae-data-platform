@@ -23,7 +23,7 @@ import json
 # App-specific imports
 from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution, Client
 from django.db.models import Q
-from apps.clients.models import Client 
+from apps.clients.models import Client, ClientSocialAccount
 from .apis.google_oauth import (
     oauth_authorize as api_oauth_authorize,
 )
@@ -44,6 +44,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework import serializers 
 from .models import GoogleAdsField, FacebookAdsField
 from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
 from allauth.socialaccount.models import SocialToken
@@ -122,12 +123,37 @@ class ConnectionViewSet(viewsets.ModelViewSet):
         return Response(response_data)
 
     def perform_create(self, serializer):
-        connection = serializer.save(user=self.request.user, status="PENDING")
+        # 從請求中獲取 social_account_id
+        social_account_id = self.request.data.get('social_account_id')
+        social_account = None
+        if social_account_id:
+            try:
+                # 確保這個 social_account 是屬於當前用戶的，並且是與 client 關聯的
+                # 可以選擇在這裡額外檢查 ClientSocialAccount 關聯
+                social_account = SocialAccount.objects.get(pk=social_account_id, user=self.request.user)
+                # 為了加強安全性，確認該 social_account 確實與當前 client 連結
+                client_id = self.request.data.get('client_id')
+                if client_id:
+                    client = Client.objects.get(id=client_id)
+                    if not ClientSocialAccount.objects.filter(client=client, social_account=social_account).exists():
+                        raise serializers.ValidationError({"social_account_id": "Selected social account is not linked to this client."})
+
+            except SocialAccount.DoesNotExist:
+                raise serializers.ValidationError({"social_account_id": "Social account not found or not owned by you."})
+            except Client.DoesNotExist:
+                raise serializers.ValidationError({"client_id": "Client not found."})
+        
+        # 保存 Connection 物件，並將 social_account 賦值給它
+        connection = serializer.save(
+            user=self.request.user, 
+            status="PENDING",
+            social_account=social_account # 將選擇的 social_account 賦值給 Connection
+        )
+
         user_id = self.request.user.id
         cache_key = f"connections_list_for_user_{user_id}"
         cache.delete(cache_key)
         logger.info(f"Cleared connections list cache for user {user_id} after creating connection {connection.pk}")
-
 
         logger.info(f"Triggering sync task for new connection {connection.pk}")
         sync_connection_data_task.delay(
@@ -265,17 +291,28 @@ def get_google_ads_resources(request):
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def get_facebook_ad_accounts(request):
-    
-    client_id = request.query_params.get('client_id')
-    if not client_id:
-        return Response({"error": "client_id is required"}, status=400)
-    
-    try:
-        client = Client.objects.get(id=client_id)
-        if not client.facebook_social_account:
-            return Response({"error": "Client not linked to a Facebook account"}, status=400)
+    # 原來的 client_id 不再是直接獲取 token 的唯一依據
+    # 現在需要傳遞 social_account_id
+    social_account_id = request.query_params.get('social_account_id')
+    if not social_account_id:
+        return Response({"error": "social_account_id is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        token = SocialToken.objects.get(account=client.facebook_social_account)
+    try:
+        # 獲取指定的 SocialAccount
+        social_account = SocialAccount.objects.get(pk=social_account_id, user=request.user, provider='facebook')
+
+        # 驗證該 SocialAccount 是否確實連結到請求的 Client (可選，但建議加強安全性)
+        client_id = request.query_params.get('client_id')
+        if client_id:
+            client = Client.objects.get(id=client_id)
+            # 確保這個 SocialAccount 確實是這個 Client 的一個連結
+            if not ClientSocialAccount.objects.filter(client=client, social_account=social_account).exists():
+                return Response({"error": "Selected social account is not linked to this client."}, status=status.HTTP_403_FORBIDDEN)
+            # 確保請求用戶有權限查看此客戶
+            if not request.user.is_superuser and not client.settings.filter(user=request.user).exists():
+                return Response({"error": "You do not have permission to access this client."}, status=status.HTTP_403_FORBIDDEN)
+
+        token = SocialToken.objects.get(account=social_account, app__provider='facebook') # 確保 app__provider 正確
         api_client = FacebookAdsAPIClient(
             app_id=settings.FACEBOOK_APP_ID,
             app_secret=settings.FACEBOOK_APP_SECRET,
@@ -283,8 +320,15 @@ def get_facebook_ad_accounts(request):
         )
         accounts = api_client.get_ad_accounts()
         return Response(accounts)
+    except SocialAccount.DoesNotExist:
+        return Response({"error": "Facebook social account not found or not owned by user."}, status=status.HTTP_404_NOT_FOUND)
+    except SocialToken.DoesNotExist:
+        return Response({"error": "Facebook token not found for this account. Please re-authorize."}, status=status.HTTP_400_BAD_REQUEST)
+    except Client.DoesNotExist:
+        return Response({"error": "Client not found."}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        logger.error(f"Error getting Facebook ad accounts: {e}", exc_info=True)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['GET'])
 @authentication_classes([JWTAuthentication])
@@ -445,10 +489,9 @@ def client_oauth_authorize(request, client_id): # client_id is UUID here
 
 @login_required
 def oauth_callback(request): # Primarily for Google via AllAuth
-    """Handle OAuth callback and link social account to client"""
     logger.info(f"OAuth callback called with GET params: {request.GET}")
     logger.info(f"Session data: oauth_client_id_to_link={request.session.get('oauth_client_id_to_link')}")
-    
+
     client_id = request.session.pop('oauth_client_id_to_link', None)
     redirect_path = request.session.pop('final_redirect_after_oauth_link', '/')
 
@@ -458,48 +501,52 @@ def oauth_callback(request): # Primarily for Google via AllAuth
         return redirect("connections:connection_list")
 
     try:
-        # 獲取最新的 Google social account
+        client = Client.objects.get(id=client_id)
+        logger.info(f"Found client: {client.name}")
+
+        # 獲取最新的 Google social account (AllAuth 已經處理了創建/更新)
         social_accounts = SocialAccount.objects.filter(
             user=request.user, 
             provider="google"
-        ).order_by('-date_joined')
-        
-        logger.info(f"Found {social_accounts.count()} Google social accounts")
-        
+        ).order_by('-date_joined') # 確保拿到最新的或相關的
+
         if not social_accounts.exists():
             logger.error("No Google social account found for user")
             messages.error(request, "Please complete the Google authorization process first.")
             return redirect("connections:connection_list")
-            
-        social_account = social_accounts.first()
+
+        social_account = social_accounts.first() # 使用 latest one
         logger.info(f"Using Google social account: {social_account.extra_data.get('email', 'No email found')}")
-            
-        client = Client.objects.get(id=client_id)
-        logger.info(f"Found client: {client.name}")
-        
-        # 檢查是否已經有 Google social account
-        if client.google_social_account:
-            logger.info(f"Client already has Google account: {client.google_social_account.extra_data.get('email')}")
-            messages.info(request, f"Client already has Google account: {client.google_social_account.extra_data.get('email')}")
-        else:
-            client.google_social_account = social_account
-            client.save(update_fields=['google_social_account'])
-            logger.info(f"Successfully linked Google account to client {client.name}")
+
+        # 創建或更新 ClientSocialAccount 關聯
+        client_social_link, created = ClientSocialAccount.objects.update_or_create(
+            client=client,
+            social_account=social_account,
+            defaults={'added_by_user': request.user} # 記錄是誰建立這個關聯
+        )
+
+        if created:
+            logger.info(f"Successfully linked NEW Google account '{social_account.extra_data.get('email')}' to client {client.name}")
             messages.success(
                 request, 
                 f"Google account '{social_account.extra_data.get('email')}' successfully linked to client '{client.name}'."
+            )
+        else:
+            logger.info(f"Google account '{social_account.extra_data.get('email')}' already linked to client {client.name}. Updated existing link.")
+            messages.info(
+                request, 
+                f"Google account '{social_account.extra_data.get('email')}' already linked to client '{client.name}'."
             )
 
     except Client.DoesNotExist:
         logger.error(f"Client with ID {client_id} not found during OAuth callback")
         messages.error(request, "Client not found. Please try again.")
     except Exception as e:
-        logger.error(f"Unexpected error during OAuth callback: {e}")
+        logger.error(f"Unexpected error during Google OAuth callback: {e}", exc_info=True)
         messages.error(request, "An error occurred while linking the account. Please try again.")
 
-    # Redirect in the Frontend
     final_redirect_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}{redirect_path}"
-    
+
     logger.info(f"OAuth success. Redirecting to dynamic frontend URL: {final_redirect_url}")
     return redirect(final_redirect_url)
 
@@ -521,18 +568,17 @@ class GoogleOAuth2CustomCallbackView(OAuth2CallbackView, View):
 @require_http_methods(["GET"])
 def facebook_oauth_callback(request):
     code = request.GET.get('code')
-    state_param = request.GET.get('state') # This should be the client_id we passed
+    state_param = request.GET.get('state') 
 
     redirect_path = request.session.pop('final_redirect_after_oauth_link', '/')
-    
-    # Retrieve client_id from state or session (state is more reliable for CSRF protection)
+
     client_id_from_state = state_param
     client_id_from_session = request.session.pop("facebook_client_id_to_link", None)
 
-    if not client_id_from_state and not client_id_from_session: # Prefer state
+    if not client_id_from_state and not client_id_from_session:
         messages.error(request, "No client ID found in state or session for Facebook OAuth.")
         return redirect("connections:connection_list")
-    
+
     client_id = client_id_from_state or client_id_from_session
 
     if not code:
@@ -541,12 +587,11 @@ def facebook_oauth_callback(request):
         logger.error(f"Facebook OAuth error: No code. Reason: {error_reason}, Desc: {error_description}")
         messages.error(request, f"Facebook authorization failed. Reason: {error_description or error_reason or 'Unknown error'}")
         return redirect("connections:connection_list")
-    
+
     try:
-        # Exchange code for an access token
         redirect_uri = request.build_absolute_uri(reverse('connections:facebook_oauth_callback'))
-        redirect_uri = redirect_uri.replace('http://', 'https://') # Ensure HTTPS
-        
+        redirect_uri = redirect_uri.replace('http://', 'https://')
+
         token_url = (
             f"https://graph.facebook.com/v18.0/oauth/access_token"
             f"?client_id={settings.FACEBOOK_APP_ID}"
@@ -554,43 +599,31 @@ def facebook_oauth_callback(request):
             f"&client_secret={settings.FACEBOOK_APP_SECRET}"
             f"&code={code}"
         )
-        
+
         api_response = requests.get(token_url)
         api_response.raise_for_status()
         token_data = api_response.json()
-        
+
         access_token = token_data.get('access_token')
         if not access_token:
             logger.error(f"Facebook OAuth: No access_token in response data: {token_data}")
             raise Exception("Access token not found in Facebook's response.")
-        
-        # Get user info from Facebook using the new access token
+
         graph = facebook.GraphAPI(access_token=access_token)
         user_info = graph.get_object('me', fields='id,name,email')
-        
-        try:
-            current_facebook_app = SocialApp.objects.get(
-                provider='facebook',
-                client_id=settings.FACEBOOK_APP_ID
-            )
-        except SocialApp.DoesNotExist:
-            logger.error(f"CRITICAL: Facebook SocialApp with provider 'facebook' and client_id '{settings.FACEBOOK_APP_ID}' not found in Django Admin.")
-            messages.error(request, "Facebook application is not configured correctly in the system.")
-            return redirect("connections:connection_list")
-        except SocialApp.MultipleObjectsReturned:
-            logger.error(f"CRITICAL: Multiple Facebook SocialApp configurations found.")
-            messages.error(request, "Ambiguous Facebook application configuration.")
-            return redirect("connections:connection_list")
 
-        # Create or update SocialAccount
+        current_facebook_app = SocialApp.objects.get(
+            provider='facebook',
+            client_id=settings.FACEBOOK_APP_ID
+        )
+
         social_account, created = SocialAccount.objects.update_or_create(
-            user=request.user,
+            user=request.user, # AllAuth 的 SocialAccount 是與 Django User 關聯的
             provider=current_facebook_app.provider,
             uid=user_info['id'],
             defaults={'extra_data': user_info}
         )
 
-        # Create or update SocialToken
         SocialToken.objects.update_or_create(
             account=social_account,
             app=current_facebook_app,
@@ -598,13 +631,21 @@ def facebook_oauth_callback(request):
         )
 
         client = Client.objects.get(id=client_id)
-        client.facebook_social_account = social_account
-        client.save(update_fields=['facebook_social_account'])
+        # 不再直接賦值 client.facebook_social_account
+        # 而是創建或更新 ClientSocialAccount 關聯
+        client_social_link, created_link = ClientSocialAccount.objects.update_or_create(
+            client=client,
+            social_account=social_account,
+            defaults={'added_by_user': request.user}
+        )
 
-        messages.success(request, f"Facebook account '{user_info.get('name', user_info['id'])}' successfully authorized and linked to client {client.name}.")
-        
+        if created_link:
+            messages.success(request, f"Facebook account '{user_info.get('name', user_info['id'])}' successfully authorized and linked to client {client.name}.")
+        else:
+            messages.info(request, f"Facebook account '{user_info.get('name', user_info['id'])}' already linked to client {client.name}. Updated existing link.")
+
         final_redirect_url = f"{settings.FRONTEND_BASE_URL.rstrip('/')}{redirect_path}"
-        
+
         logger.info(f"Facebook OAuth success. Redirecting to dynamic frontend URL: {final_redirect_url}")
         return redirect(final_redirect_url)
 
@@ -613,52 +654,103 @@ def facebook_oauth_callback(request):
         messages.error(request, f"Failed to get access token from Facebook: {e.response.json().get('error',{}).get('message','Server error')}")
     except Client.DoesNotExist:
         messages.error(request, "Client not found for Facebook OAuth linking.")
-    except SocialAccount.DoesNotExist:
-        messages.error(request, "Failed to create or link Facebook social account.")
+    except SocialApp.DoesNotExist:
+        logger.error(f"CRITICAL: Facebook SocialApp with provider 'facebook' and client_id '{settings.FACEBOOK_APP_ID}' not found in Django Admin.")
+        messages.error(request, "Facebook application is not configured correctly in the system.")
+    except SocialApp.MultipleObjectsReturned:
+        logger.error(f"CRITICAL: Multiple Facebook SocialApp configurations found.")
+        messages.error(request, "Ambiguous Facebook application configuration.")
     except Exception as e:
         logger.error(f"Facebook OAuth callback unexpected error: {str(e)}", exc_info=True)
         messages.error(request, f"An unexpected error occurred during Facebook authorization: {str(e)}")
-    
+
     return redirect("connections:connection_list")
 
 @authentication_classes([JWTAuthentication])
 @permission_classes([IsAuthenticated])
 def check_auth_status(request):
-    """檢查使用者的 Google 授權狀態"""
+    """檢查指定 social_account_id 的授權狀態"""
+    social_account_id = request.GET.get('social_account_id')
+    provider = request.GET.get('provider') # 'google' or 'facebook'
+
+    if not social_account_id or not provider:
+        return JsonResponse({"is_authorized": False, "email": "", "error": "social_account_id and provider are required"}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
-        client_id = request.GET.get('client_id')
-        if not client_id:
-            return JsonResponse({"is_authorized": False, "email": "", "error": "No client_id provided"})
-
-        client = get_object_or_404(Client, id=client_id)
-        
-        # 檢查 client 是否有 google_social_account
-        if not client.google_social_account:
-            return JsonResponse({"is_authorized": False, "email": ""})
-
-        social_account = client.google_social_account
+        social_account = SocialAccount.objects.get(pk=social_account_id, user=request.user, provider=provider)
         social_token = SocialToken.objects.filter(
-            account=social_account, app__provider="google"
+            account=social_account, app__provider=provider
         ).first()
 
-        is_authorized = bool(
-            social_token
-            and (
-                not social_token.expires_at or social_token.expires_at > timezone.now()
-            )
-        )
+        is_authorized = False
+        if social_token and social_token.token:
+            if provider == 'google':
+                is_authorized = bool(not social_token.expires_at or social_token.expires_at > timezone.now())
+            elif provider == 'facebook':
+                is_authorized = True # Facebook long-lived tokens often don't have expiry from allauth. More robust check might be needed.
 
         return JsonResponse(
             {
                 "is_authorized": is_authorized,
-                "email": (
-                    social_account.extra_data.get("email", "") if is_authorized else ""
-                ),
+                "email": social_account.extra_data.get("email", ""),
+                "name": social_account.extra_data.get("name", social_account.uid)
             }
         )
+    except SocialAccount.DoesNotExist:
+        return JsonResponse({"is_authorized": False, "error": "Social account not found or not owned by user."}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        logger.error(f"Error checking auth status: {str(e)}")
-        return JsonResponse({"is_authorized": False, "email": "", "error": str(e)})
+        logger.error(f"Error checking auth status for social account {social_account_id}: {str(e)}", exc_info=True)
+        return JsonResponse({"is_authorized": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    
+@api_view(['GET'])
+@authentication_classes([JWTAuthentication])
+@permission_classes([IsAuthenticated])
+def get_client_social_accounts(request, client_id):
+    """
+    獲取指定 client 已連結的 social accounts 列表及其狀態。
+    """
+    try:
+        client = Client.objects.get(id=client_id)
+        # 確保請求用戶有權限查看此客戶
+        if not request.user.is_superuser and not client.settings.filter(user=request.user).exists():
+            return Response({"error": "You do not have permission to access this client."}, status=status.HTTP_403_FORBIDDEN)
+
+        social_accounts_data = []
+        # 使用 related_name 'linked_social_accounts' 來查詢
+        client_social_links = ClientSocialAccount.objects.filter(client=client)
+
+        for link in client_social_links:
+            social_account = link.social_account
+            token_obj = link.get_token() # 使用 ClientSocialAccount 的 helper 方法獲取 token
+
+            is_authorized = False
+            if token_obj:
+                # 判斷 token 是否有效 (這裡可以加入更複雜的過期判斷)
+                if token_obj.app.provider == 'google':
+                    is_authorized = bool(token_obj.token and (not token_obj.expires_at or token_obj.expires_at > timezone.now()))
+                elif token_obj.app.provider == 'facebook':
+                    # Facebook 長效 token 通常沒有 expires_at
+                    is_authorized = bool(token_obj.token) # 這裡可以加入更多驗證，例如打 Graph API 驗證 token 有效性
+
+            social_accounts_data.append({
+                'id': str(social_account.pk), # 將 UUID 轉換為字串
+                'provider': social_account.provider,
+                'uid': social_account.uid,
+                'email': social_account.extra_data.get('email', ''),
+                'name': social_account.extra_data.get('name', social_account.uid), # 優先使用 name
+                'is_authorized': is_authorized,
+                'last_used': link.created_at # 或你可以增加一個 last_used 欄位在 ClientSocialAccount
+            })
+        
+        return Response(social_accounts_data)
+
+    except Client.DoesNotExist:
+        return Response({"error": "Client not found."}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        logger.error(f"Error fetching client social accounts: {e}", exc_info=True)
+        return Response({"error": "An internal server error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 # ===================================================================

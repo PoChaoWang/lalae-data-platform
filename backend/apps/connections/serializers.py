@@ -5,7 +5,7 @@ from django.conf import settings
 import logging
 
 from .models import Connection, DataSource, ConnectionExecution
-from apps.clients.models import Client
+from apps.clients.models import Client, ClientSocialAccount
 from allauth.socialaccount.models import SocialToken, SocialAccount
 from django.utils import timezone
 from django.contrib.auth import get_user_model
@@ -71,11 +71,13 @@ class ConnectionSerializer(serializers.ModelSerializer):
     
     client_id = serializers.UUIDField(write_only=True, required=True)
     data_source_id = serializers.IntegerField(write_only=True, required=True)
+    
+    # 新增 social_account_id 字段，用於接收前端傳來的 SocialAccount UUID
+    social_account_id = serializers.UUIDField(write_only=True, required=False, allow_null=True) # 允許空，因為有些數據源不需要 OAuth
 
     last_execution_status = serializers.SerializerMethodField()
     last_execution_time = serializers.SerializerMethodField()
     
-    # 讓 user 欄位在讀取時可見，但在建立時是唯讀的 (由 perform_create 設定)
     user = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
@@ -96,42 +98,47 @@ class ConnectionSerializer(serializers.ModelSerializer):
             'user',
             'last_execution_status',
             'last_execution_time',
+            'social_account_id', # 加入到 fields 列表中
         ]
         read_only_fields = ['status', 'created_at', 'updated_at']
     
     def create(self, validated_data):
         """
-        覆寫 create 方法，以處理 client_id 和 data_source_id，
-        並在建立 Connection 時關聯 SocialAccount。
+        覆寫 create 方法，以處理 client_id, data_source_id 和 social_account_id。
         """
         client_id = validated_data.pop('client_id')
         data_source_id = validated_data.pop('data_source_id')
-        
+        social_account_id = validated_data.pop('social_account_id', None) # 獲取 social_account_id
+
         try:
-            client = ClientModel.objects.get(id=client_id)
+            client = Client.objects.get(id=client_id)
             data_source = DataSource.objects.get(id=data_source_id)
-        except (ClientModel.DoesNotExist, DataSource.DoesNotExist) as e:
+        except (Client.DoesNotExist, DataSource.DoesNotExist) as e:
             raise serializers.ValidationError(str(e))
 
-        # ✨ 解決問題的核心邏輯 ✨
+        social_account = None
+        if social_account_id:
+            try:
+                # 確保選擇的 SocialAccount 存在且與當前用戶關聯（allauth 的 SocialAccount 是與 Django User 關聯的）
+                # 並且該 SocialAccount 已與 Client 連結（通過 ClientSocialAccount）
+                social_account = SocialAccount.objects.get(id=social_account_id, user=self.context['request'].user)
+                
+                # 額外檢查：確認該 SocialAccount 確實已連結到 Client
+                if not ClientSocialAccount.objects.filter(client=client, social_account=social_account).exists():
+                    raise serializers.ValidationError({"social_account_id": "Selected social account is not linked to this client."})
+
+            except SocialAccount.DoesNotExist:
+                raise serializers.ValidationError({"social_account_id": "Selected social account not found or not owned by you."})
+            except ClientSocialAccount.DoesNotExist: # 雖然上面已經檢查過了，但這裡再次檢查以防萬一
+                raise serializers.ValidationError({"social_account_id": "Selected social account is not linked to this client."})
+
+        # 建立 Connection 物件
         connection = Connection.objects.create(
             client=client,
             data_source=data_source,
+            social_account=social_account, # 將 social_account 賦值給 Connection
             **validated_data
         )
-
-        # 根據資料源，將 Client 上的 social_account 賦值給 Connection
-        if data_source.name == 'GOOGLE_ADS':
-            if not client.google_social_account:
-                # 在此處做一個防禦性檢查
-                raise serializers.ValidationError("The selected client is not authorized with a Google account.")
-            connection.social_account = client.google_social_account
-        elif data_source.name == 'FACEBOOK_ADS':
-            if not client.facebook_social_account:
-                raise serializers.ValidationError("The selected client is not authorized with a Facebook account.")
-            connection.social_account = client.facebook_social_account
-        
-        connection.save() # 儲存 social_account 的關聯
         
         return connection
 
@@ -144,46 +151,56 @@ class ConnectionSerializer(serializers.ModelSerializer):
         return last_execution.started_at if last_execution else None
 
     def validate(self, data):
+        # 這裡的 self.instance 在 update 時會有值，在 create 時為 None
         is_creating = self.instance is None
+        
+        # 如果是更新且沒有提供 client_id 和 data_source_id，則從現有 instance 獲取
+        client = data.get('client_id')
+        data_source = data.get('data_source_id')
+        social_account_id = data.get('social_account_id', None) # 從 data 中獲取 social_account_id
 
         if is_creating:
-            client_id = data.get('client_id')
-            data_source_id = data.get('data_source_id')
-
-            logger.info(f"====== Starting validation for NEW connection ======")
-            logger.info(f"Received client_id from frontend: {client_id}")
-            logger.info(f"Received data_source_id from frontend: {data_source_id}")
-
-            if not client_id or not data_source_id:
+            if not client or not data_source:
                 raise serializers.ValidationError("client_id and data_source_id are required for creating a new connection.")
-
             try:
-                client = Client.objects.get(id=client_id)
-                data_source = DataSource.objects.get(id=data_source_id)
-
-                logger.info(f"Successfully fetched Client from DB: '{client.name}' (ID: {client.id})")
-                logger.info(f"Client's linked Google Social Account in DB: {client.google_social_account}")
-
-
+                client_obj = Client.objects.get(id=client)
+                data_source_obj = DataSource.objects.get(id=data_source)
             except (Client.DoesNotExist, DataSource.DoesNotExist) as e:
-
-                logger.error(f"Could not find Client or DataSource in DB. Error: {e}")
-
                 raise serializers.ValidationError(str(e))
-        else: 
-            client = self.instance.client
-            data_source = self.instance.data_source
+        else:
+            client_obj = self.instance.client
+            data_source_obj = self.instance.data_source
+            # 如果是更新，且 social_account_id 沒有提供，使用 Connection 自身已有的 social_account
+            if social_account_id is None and self.instance.social_account:
+                 social_account_id = self.instance.social_account.id # 使用已有的 social_account_id
+            
+        should_run_api_test = is_creating or 'config' in data or 'social_account_id' in data
 
-        should_run_api_test = is_creating or 'config' in data
-
-        if not should_run_api_test:
+        if not should_run_api_test and not social_account_id: # 如果沒有要跑 API 測試，且沒有 social account 也就不檢查了
             return data
 
         config = data.get('config', self.instance.config if self.instance else {})
-        logger.info(f"Running validation for source: {data_source.name}")
+        
+        # 獲取實際用於 API 測試的 SocialAccount 和 Token
+        social_account_for_test = None
+        social_token_for_test = None
+        
+        if social_account_id:
+            try:
+                social_account_for_test = SocialAccount.objects.get(id=social_account_id, user=self.context['request'].user)
+                social_token_for_test = SocialToken.objects.get(account=social_account_for_test, app__provider=data_source_obj.name.lower().split('_')[0])
+            except (SocialAccount.DoesNotExist, SocialToken.DoesNotExist):
+                # 如果找不到，表示該社群帳號無效或未授權，後續會拋出驗證錯誤
+                if data_source_obj.oauth_required: # 如果是需要 OAuth 的數據源
+                     raise serializers.ValidationError({"social_account_id": "Selected social account is not valid or authorized."})
+
+        # 對於需要 OAuth 的數據源，強制檢查 social_account_for_test
+        if data_source_obj.oauth_required and not social_account_for_test:
+            raise serializers.ValidationError({"social_account_id": "An authorized social account is required for this connection."})
+
 
         try:
-            if data_source.name == "GOOGLE_SHEET":
+            if data_source_obj.name == "GOOGLE_SHEET":
                 sheet_id = config.get('sheet_id')
                 if not sheet_id:
                     raise serializers.ValidationError({"config.sheet_id": "Sheet ID is required."})
@@ -193,52 +210,37 @@ class ConnectionSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError({"config.sheet_id": "Permission Denied. Please ensure our service account has 'Editor' access to this Google Sheet."})
                 logger.info("Google Sheet permission check PASSED.")
 
-            elif data_source.name == "FACEBOOK_ADS":
-                if not client.facebook_social_account:
-                    raise serializers.ValidationError("This client does not have a linked Facebook account.")
+            elif data_source_obj.name == "FACEBOOK_ADS":
+                if not social_token_for_test: # 再次檢查 token 是否存在
+                    raise serializers.ValidationError("Facebook authorization token not found. Please re-authorize.")
                 
-                token_obj = SocialToken.objects.get(account=client.facebook_social_account, app__provider='facebook')
                 fb_client = FacebookAdsAPIClient(
                     app_id=settings.FACEBOOK_APP_ID,
                     app_secret=settings.FACEBOOK_APP_SECRET,
-                    access_token=token_obj.token,
+                    access_token=social_token_for_test.token, # 使用來自 social_token_for_test 的 token
                     ad_account_id=config.get('facebook_ad_account_id')
                 )
-                # 執行輕量 API 請求作為測試
                 fb_client.get_insights(fields=['campaign_name'], date_preset='yesterday')
                 logger.info("Facebook API connection test PASSED.")
 
-            elif data_source.name == "GOOGLE_ADS":
-                logger.info(f"Re-fetching client '{client.name}' to ensure data is fresh before API validation.")
-                client = Client.objects.get(id=client.id)
-                logger.info(f"Fresh client object's Google Social Account is: {client.google_social_account}")
-
-                if not client.google_social_account:
-                    # 為了保險起見，我們仍然可以保留一個對 social_account 的直接檢查
-                    raise serializers.ValidationError("The client object is not linked to any Google Social Account.")
+            elif data_source_obj.name == "GOOGLE_ADS":
+                if not social_token_for_test: # 再次檢查 token 是否存在
+                    raise serializers.ValidationError("Google authorization token not found. Please re-authorize.")
                 
-                try:
-                    social_token = SocialToken.objects.get(account=client.google_social_account)
-                    logger.info("Found associated SocialToken successfully.")
-                except SocialToken.DoesNotExist:
-                    logger.error(f"VALIDATION FAILED for client '{client.name}': SocialAccount is linked, but SocialToken is missing!")
-                    raise serializers.ValidationError("Authorization token not found for the linked Google account. Please re-authorize.")
-        
-                _refresh_user_social_token(social_token)
-
-                if social_token.expires_at and social_token.expires_at < timezone.now():
-                    logger.warning(f"Token for user {social_token.account.user.id} has expired. Attempting to refresh.")
+                # 刷新 token (如果需要)
+                if social_token_for_test.expires_at and social_token_for_test.expires_at < timezone.now():
+                    logger.warning(f"Token for user {social_token_for_test.account.user.id} has expired. Attempting to refresh.")
                     try:
-                        _refresh_user_social_token(social_token)
+                        _refresh_user_social_token(social_token_for_test) # 使用新的 social_token_for_test
                     except Exception as e:
                         logger.error(f"The _refresh_user_social_token function failed: {e}", exc_info=True)
                         raise serializers.ValidationError("Failed to refresh the expired Google authorization. Please re-authorize manually.")
                 
                 google_ads_config = {
                     "developer_token": settings.GOOGLE_ADS_DEVELOPER_TOKEN,
-                    "client_id": social_token.app.client_id,
-                    "client_secret": social_token.app.secret,
-                    "refresh_token": social_token.token_secret,
+                    "client_id": social_token_for_test.app.client_id,
+                    "client_secret": social_token_for_test.app.secret,
+                    "refresh_token": social_token_for_test.token_secret,
                     "login_customer_id": config.get("customer_id"),
                     "use_proto_plus": True
                 }
@@ -248,12 +250,12 @@ class ConnectionSerializer(serializers.ModelSerializer):
                 logger.info("Google Ads API connection test PASSED.")
 
         except (SocialToken.DoesNotExist, GoogleAdsException) as e:
-            logger.error(f"API validation failed for {data_source.name}: {e}", exc_info=True)
-            raise serializers.ValidationError(f"API Connection Test Failed for {data_source.name}. Please check credentials and permissions. Details: {e}")
+            logger.error(f"API validation failed for {data_source_obj.name}: {e}", exc_info=True)
+            raise serializers.ValidationError(f"API Connection Test Failed for {data_source_obj.name}. Please check credentials and permissions. Details: {e}")
         except serializers.ValidationError:
-            raise
+            raise # 重新拋出已捕捉的驗證錯誤
         except Exception as e:
-            logger.error(f"Unexpected API validation error for {data_source.name}: {e}", exc_info=True)
+            logger.error(f"Unexpected API validation error for {data_source_obj.name}: {e}", exc_info=True)
             raise serializers.ValidationError(f"An unexpected error occurred during API validation: {e}")
 
         return data

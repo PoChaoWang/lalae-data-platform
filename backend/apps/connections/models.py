@@ -96,6 +96,14 @@ class Connection(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    social_account = models.ForeignKey(
+        SocialAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="The social account used for this connection."
+    )
+
     class Meta:
         unique_together = ['user', 'data_source', 'display_name']
 

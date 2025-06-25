@@ -163,3 +163,13 @@ export type RerunQueryResponse = {
   status: 'success' | 'error';
   message: string;
 };
+
+export type LinkedSocialAccount = {
+  id: string; // UUID string
+  provider: string;
+  uid: string;
+  email: string;
+  name: string;
+  is_authorized: boolean;
+  last_used: string; // ISO datetime string
+};

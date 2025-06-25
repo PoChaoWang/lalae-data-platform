@@ -201,4 +201,18 @@ class GoogleAdsField(models.Model):
 
     def __str__(self):
         return f"{self.display_name} ({self.field_name})"
+    
+class FacebookAdsField(models.Model):
+    name = models.CharField(max_length=255, help_text="The internal name of the Facebook Ads field.")
+    label = models.CharField(max_length=255, help_text="The display label of the Facebook Ads field.")
+    insights_level = models.CharField(max_length=50, help_text="The insights level this field belongs to (e.g., 'campaign', 'ad_set', 'ad').")
+    field_type = models.CharField(max_length=50, help_text="Type of field: 'breakdown', 'action_breakdown', or 'field'.")
+
+    class Meta:
+        verbose_name = "Facebook Ads Field"
+        verbose_name_plural = "Facebook Ads Fields"
+        unique_together = ('name', 'insights_level')
+
+    def __str__(self):
+        return f"[{self.insights_level}] {self.label} ({self.name})"
 

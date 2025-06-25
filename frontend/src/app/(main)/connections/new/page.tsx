@@ -27,77 +27,92 @@ function NewConnectionContent() {
     config: any;
   } | null>(null);
 
+    
+
   useEffect(() => {
-    const initializePage = async () => {
-      if (!protectedFetch) {
+    // 只有在 protectedFetch 可用且 session 狀態為 'authenticated' 時才執行初始化邏輯
+    if (!protectedFetch || status === 'loading') { // 如果還在加載 session 狀態，就等待
+        setIsLoading(true);
+        return; 
+    }
+
+    if (status === 'unauthenticated') { // 如果用戶未認證，重定向到登入頁面或錯誤頁面
+        console.error("User is unauthenticated, redirecting to login.");
+        router.replace('/auth/signin'); // 或其他您的登入路徑
         return;
-      }
-      setIsLoading(true);
-      const cloneId = searchParams.get('cloneFrom');
-      const stepParam = searchParams.get('step');
-      const clientId = searchParams.get('client_id');
-      const dataSourceName = searchParams.get('data_source_name');
+    }
 
-      try {
-        if (cloneId) {
-          const connRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`);
-          if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
-          const clonedConnectionData: Connection = await connRes.json();
+    // 如果走到這裡，說明 protectedFetch 已準備好，且用戶已認證
+    const initializePage = async () => {
+        setIsLoading(true);
+        const cloneId = searchParams.get('cloneFrom');
+        const stepParam = searchParams.get('step');
+        const clientId = searchParams.get('client_id');
+        const dataSourceName = searchParams.get('data_source_name');
 
-          const fullClientId = clonedConnectionData.client.id;
+        try {
+            if (cloneId) {
+                const connRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${cloneId}/`, { 
+                  cache: 'no-store' 
+              });
+                if (!connRes.ok) throw new Error('Failed to fetch data for cloning.');
+                const clonedConnectionData: Connection = await connRes.json();
 
-          const fullClientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${fullClientId}/`, { 
-            cache: 'no-store' 
-          });
-          if (!fullClientRes.ok) throw new Error('Failed to fetch full client details.');
-          const fullClientData: SelectableClient = await fullClientRes.json();
-          
-          setSelectedClient(fullClientData); 
-          setSelectedDataSource(clonedConnectionData.data_source);
-          setInitialDataForForm({
-            displayName: `${clonedConnectionData.display_name} (Copy)`,
-            config: clonedConnectionData.config
-          });
-          setStep(3); 
+                const fullClientId = clonedConnectionData.client.id;
 
-        } else if (clientId) {
-          if (!selectedClient || selectedClient.id !== clientId) {
-            // 如果使用者是透過直接貼上 URL 進來的，我們還是需要 fetch 一次
-            const clientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/{clientId}/`, { 
-                cache: 'no-store'
-            });
-            if (!clientRes.ok) throw new Error('Failed to fetch client data.');
-            const clientData: SelectableClient = await clientRes.json();
-            setSelectedClient(clientData);
+                const fullClientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${fullClientId}/`, { 
+                    cache: 'no-store' 
+                });
+                if (!fullClientRes.ok) throw new Error('Failed to fetch full client details.');
+                const fullClientData: SelectableClient = await fullClientRes.json();
+
+                setSelectedClient(fullClientData); 
+                setSelectedDataSource(clonedConnectionData.data_source);
+                setInitialDataForForm({
+                    displayName: `${clonedConnectionData.display_name} (Copy)`,
+                    config: clonedConnectionData.config
+                });
+                setStep(3); 
+
+            } else if (clientId) {
+                // 在這裡，我們要確保 client 數據是最新且正確的
+                // 不應該依賴 selectedClient 是否已經存在，因為授權回調時 selectedClient 可能是舊的
+                const clientRes = await protectedFetch(`<span class="math-inline">\{NEXT\_PUBLIC\_TO\_BACKEND\_URL\}/clients/</span>{clientId}/`, { 
+                    cache: 'no-store'
+                });
+                if (!clientRes.ok) throw new Error('Failed to fetch client data.');
+                const clientData: SelectableClient = await clientRes.json();
+                setSelectedClient(clientData);
+
+                if (stepParam === '3' && dataSourceName) {
+                    const dataSourceRes = await protectedFetch(`<span class="math-inline">\{NEXT\_PUBLIC\_TO\_BACKEND\_URL\}/connections/datasources/</span>{dataSourceName}/`, {
+                        cache: 'no-store'
+                    });
+                    if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');
+                    const dataSourceData: DataSource = await dataSourceRes.json();
+                    setSelectedDataSource(dataSourceData);
+                    setStep(3);
+                } else if (stepParam === '2') {
+                    setStep(2);
+                } else {
+                    setStep(1);
+                }
+            } else {
+                // --- 預設情況 ---
+                setStep(1);
             }
-
-          if (stepParam === '3' && dataSourceName) {
-            const dataSourceRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/${dataSourceName}/`, {
-                cache: 'no-store'
-            });
-            if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');
-            const dataSourceData: DataSource = await dataSourceRes.json();
-            setSelectedDataSource(dataSourceData);
-            setStep(3);
-          } else if (stepParam === '2') {
-            setStep(2);
-          } else {
-            setStep(1);
-          }
-        } else {
-          // --- 預設情況 ---
-          setStep(1);
+        } catch (error) {
+            console.error("Failed to initialize page due to API error or data issue:", error);
+            // 只有在確定不是認證問題，而是數據加載問題時才考慮重置
+            // 更好的做法是顯示一個錯誤訊息，而不是直接重定向
+            router.replace('/connections/new'); // 仍然會丟失參數，但這次是在認證成功後
+        } finally {
+            setIsLoading(false);
         }
-      } catch (error) {
-          console.error("Failed to initialize page:", error);
-          router.replace('/connections/new'); // 如果出錯，重置到第一步
-      } finally {
-          setIsLoading(false);
-      }
     };
 
     initializePage();
-  }, [searchParams, router, protectedFetch]);
+}, [searchParams, router, protectedFetch, status]);
 
   const handleClientSelect = (client: SelectableClient) => {
     setSelectedClient(client);

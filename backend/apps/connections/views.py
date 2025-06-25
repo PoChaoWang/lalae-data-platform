@@ -44,7 +44,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from .models import GoogleAdsField
+from .models import GoogleAdsField, FacebookAdsField
 from .apis.facebook_ads import get_facebook_field_choices, FacebookAdsAPIClient
 from allauth.socialaccount.models import SocialToken
 from django.core.cache import cache
@@ -295,19 +295,35 @@ def get_facebook_all_fields(request):
 
     if all_fields_data is None:
         try:
-            all_fields_data = get_facebook_fields_structure() # 假設這個函數讀取靜態文件
+            all_db_fields = FacebookAdsField.objects.all().values('insights_level', 'field_type', 'name', 'label')
+
+            structured_data = {}
+            for field in all_db_fields:
+                insights_level = field['insights_level']
+                field_type = field['field_type'] # 'breakdown', 'action_breakdown', or 'field'
+
+                if insights_level not in structured_data:
+                    structured_data[insights_level] = {
+                        'fields': [],
+                        'breakdowns': [],
+                        'action_breakdowns': []
+                    }
+
+                # 將 'field' 類型映射到 'fields' 鍵，其餘直接使用 field_type
+                if field_type == 'field':
+                    structured_data[insights_level]['fields'].append({'name': field['name'], 'label': field['label']})
+                elif field_type == 'breakdown':
+                    structured_data[insights_level]['breakdowns'].append({'name': field['name'], 'label': field['label']})
+                elif field_type == 'action_breakdown':
+                    structured_data[insights_level]['action_breakdowns'].append({'name': field['name'], 'label': field['label']})
+
+            all_fields_data = structured_data
             cache.set(cache_key, all_fields_data, 60 * 60 * 24 * 7) # 快取一週
-            logger.info("Facebook all fields structure cached.")
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.error(f"Occurred error when loading Facebook field definitions: {e}", exc_info=True)
-            return Response(
-                {"error": "Server configuration error: Could not load Facebook field definitions."}, 
-                status=500
-            )
+            logger.info("Facebook all fields structure cached from database.")
         except Exception as e:
-            logger.error(f"Process get_facebook_all_fields error: {e}", exc_info=True)
+            logger.error(f"Process get_facebook_all_fields error when fetching from DB: {e}", exc_info=True)
             return Response(
-                {"error": "An unexpected server error occurred."}, 
+                {"error": "An unexpected server error occurred while fetching Facebook field definitions."},
                 status=500
             )
     else:
@@ -643,8 +659,6 @@ def check_auth_status(request):
     except Exception as e:
         logger.error(f"Error checking auth status: {str(e)}")
         return JsonResponse({"is_authorized": False, "email": "", "error": str(e)})
-
-
 
 
 # ===================================================================

@@ -51,7 +51,7 @@ REDIS_URL = env("REDIS_URL")
 REDIS_CACHE_URL = f"{REDIS_URL}/1"
 REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
-FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:3000")
+FRONTEND_BASE_URL = env("FRONTEND_BASE_URL")
 
 if not GOOGLE_CLOUD_PROJECT_ID:
     raise ImproperlyConfigured(
@@ -81,7 +81,7 @@ DEBUG = env("DEBUG", default=True)
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
-    'lalae-cloud-run-302883063343.asia-east1.run.app',
+    'lalae-web-302883063343.asia-east1.run.app',
 ]
 
 # Application definition

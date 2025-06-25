@@ -34,9 +34,6 @@ class SimpleSocialAccountSerializer(serializers.ModelSerializer):
         fields = ['id', 'provider', 'uid', 'name', 'email']
 
 class ClientSerializer(serializers.ModelSerializer):
-    facebook_social_account = SimpleSocialAccountSerializer(read_only=True)
-    google_social_account = SimpleSocialAccountSerializer(read_only=True)
-
     class Meta:
         model = Client
         fields = [
@@ -44,8 +41,6 @@ class ClientSerializer(serializers.ModelSerializer):
             'name', 
             'created_at', 
             'bigquery_dataset_id',
-            'facebook_social_account', 
-            'google_social_account'
         ]
 
 class ConnectionListSerializer(serializers.ModelSerializer):

@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Clock, Zap, LogIn } from "lucide-react";
 import { useProtectedFetch } from '@/contexts/ProtectedFetchContext';
+import { signIn } from 'next-auth/react';
 
 // Pleae change the URL in the env.local file if you need
 // const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL || 'http://localhost:8000';
@@ -119,10 +120,33 @@ export default function ConnectionForm({ client, dataSource, initialData }: { cl
 
   const handleAuthorize = () => {
     const fullPath = pathname + '?' + searchParams.toString();
-    localStorage.setItem('oauth_redirect_path', fullPath);
-    const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}/?data_source=${dataSource.name}&redirect_uri=${encodeURIComponent(fullPath)}`;    
-    window.location.href = authUrl;
+
+    let providerId: string | null = null;
+
+    if (dataSource.name === 'GOOGLE_ADS') {
+      providerId = 'google';
+    } else if (dataSource.name === 'FACEBOOK_ADS') {
+      providerId = 'facebook';
+    } else {
+      // 如果數據源不是 Google Ads 或 Facebook Ads，不應該觸發 OAuth 認證
+      setError('Authorization not applicable for this data source.');
+      return;
+    }
+
+    if (providerId) {
+      // 調用 next-auth 的 signIn 函數
+      signIn(providerId, { callbackUrl: fullPath });
+    } else {
+      setError('Unknown authorization provider.');
+    }
   };
+
+  // const handleAuthorize = () => {
+  //   const fullPath = pathname + '?' + searchParams.toString();
+  //   localStorage.setItem('oauth_redirect_path', fullPath);
+  //   const authUrl = `${NEXT_PUBLIC_TO_BACKEND_URL}/connections/oauth/authorize/${client.id}/?data_source=${dataSource.name}&redirect_uri=${encodeURIComponent(fullPath)}`;    
+  //   window.location.href = authUrl;
+  // };
 
   const renderAuthCard = () => {
     if (authStatus === 'loading') {

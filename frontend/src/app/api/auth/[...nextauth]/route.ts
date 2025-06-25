@@ -2,6 +2,7 @@
 import NextAuth from "next-auth"
 import type { AuthOptions } from "next-auth"
 import GoogleProvider from 'next-auth/providers/google';
+import FacebookProvider from 'next-auth/providers/facebook';
 import CredentialsProvider from 'next-auth/providers/credentials';
 
 function isTokenExpired(expiryTime: number | undefined): boolean {
@@ -21,6 +22,11 @@ const authOptions: AuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+    }),
+
+    FacebookProvider({
+      clientId: process.env.FACEBOOK_APP_ID as string,        
+      clientSecret: process.env.FACEBOOK_APP_SECRET as string, 
     }),
 
     CredentialsProvider({
@@ -154,8 +160,32 @@ const authOptions: AuthOptions = {
                   console.error('--- [JWT] Error during token exchange with backend:', error);
               }
               break;
-      }
-  }
+            case 'facebook':
+              try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_TO_BACKEND_URL}/social-auth/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_token: account.access_token }), 
+                });
+
+                if (res.ok) {
+                    const djangoTokens = await res.json();
+                    token.accessToken = djangoTokens.access;
+                    token.refreshToken = djangoTokens.refresh;
+                    token.user = djangoTokens.user;
+                } else {
+                    const errorData = await res.json();
+                    console.error('--- [JWT] Django backend token exchange failed (Facebook):', errorData);
+                }
+              } catch (error) {
+                  console.error('--- [JWT] Error during token exchange with backend (Facebook):', error);
+              }
+              break;
+            
+          }
+        }
+
+
   // Check if access token is expired and refresh it
   if (token.accessToken && token.refreshToken && isTokenExpired(token.accessTokenExpires)) {
     // console.log('--- [JWT] Access token expired or near expiration. Attempting to refresh.');

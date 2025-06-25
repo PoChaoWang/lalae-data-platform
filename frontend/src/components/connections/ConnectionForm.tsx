@@ -66,7 +66,7 @@ export default function ConnectionForm({ client, dataSource, initialData }: { cl
         const data: LinkedSocialAccount[] = await res.json();
         const filteredData = data.filter(acc => acc.provider.toLowerCase() === dataSource.name.toLowerCase().replace('_ads', ''));
         setLinkedSocialAccounts(filteredData);
-
+        console.log('filteredData', filteredData);
         // 如果有傳入 initialData 且包含 social_account_id，則嘗試選中它
         if (initialData?.social_account_id) {
           const preSelected = filteredData.find(acc => acc.id === initialData.social_account_id);

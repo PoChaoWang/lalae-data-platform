@@ -905,6 +905,7 @@ def get_client_social_accounts(request, client_id):
     """
     try:
         client = Client.objects.get(id=client_id)
+
         # 確保請求用戶有權限查看此客戶
         if (
             not request.user.is_superuser

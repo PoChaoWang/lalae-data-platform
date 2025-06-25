@@ -60,7 +60,7 @@ export default function ConnectionForm({ client, dataSource, initialData }: { cl
 
       setAuthStatus('loading'); // 開始加載時設置為 loading
       try {
-        const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/clients/${client.id}/social_accounts/`);
+        const res = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/${client.id}/social_accounts/`);
         if (!res.ok) throw new Error('Failed to fetch linked social accounts');
         
         const data: LinkedSocialAccount[] = await res.json();

@@ -77,7 +77,7 @@ function NewConnectionContent() {
             } else if (clientId) {
                 // 在這裡，我們要確保 client 數據是最新且正確的
                 // 不應該依賴 selectedClient 是否已經存在，因為授權回調時 selectedClient 可能是舊的
-                const clientRes = await protectedFetch(`<span class="math-inline">\{NEXT\_PUBLIC\_TO\_BACKEND\_URL\}/clients/</span>{clientId}/`, { 
+                const clientRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/clients/${clientId}/`, { 
                     cache: 'no-store'
                 });
                 if (!clientRes.ok) throw new Error('Failed to fetch client data.');
@@ -85,7 +85,7 @@ function NewConnectionContent() {
                 setSelectedClient(clientData);
 
                 if (stepParam === '3' && dataSourceName) {
-                    const dataSourceRes = await protectedFetch(`<span class="math-inline">\{NEXT\_PUBLIC\_TO\_BACKEND\_URL\}/connections/datasources/</span>{dataSourceName}/`, {
+                    const dataSourceRes = await protectedFetch(`${NEXT_PUBLIC_TO_BACKEND_URL}/connections/datasources/${dataSourceName}/`, {
                         cache: 'no-store'
                     });
                     if (!dataSourceRes.ok) throw new Error('Failed to fetch data source data.');

@@ -12,6 +12,7 @@ import { SelectableClient, DataSource, Connection } from '@/lib/definitions';
 import ProtectedComponent from '@/components/ProtectedComponent'; 
 import { ArrowLeft, ArrowRight, Check, Users, Database, Zap } from 'lucide-react';
 
+
 const NEXT_PUBLIC_TO_BACKEND_URL = process.env.NEXT_PUBLIC_TO_BACKEND_URL;
 function NewConnectionContent() {
     const router = useRouter();
@@ -21,6 +22,7 @@ function NewConnectionContent() {
     const [selectedDataSource, setSelectedDataSource] = useState<DataSource | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const { protectedFetch } = useProtectedFetch();
+    const { status } = useSession();
 
   const [initialDataForForm, setInitialDataForForm] = useState<{
     displayName: string;
@@ -30,17 +32,16 @@ function NewConnectionContent() {
     
 
   useEffect(() => {
-    // 只有在 protectedFetch 可用且 session 狀態為 'authenticated' 時才執行初始化邏輯
-    if (!protectedFetch || status === 'loading') { // 如果還在加載 session 狀態，就等待
+    if (!protectedFetch || status === 'loading') { 
         setIsLoading(true);
         return; 
     }
 
-    if (status === 'unauthenticated') { // 如果用戶未認證，重定向到登入頁面或錯誤頁面
-        console.error("User is unauthenticated, redirecting to login.");
-        router.replace('/auth/signin'); // 或其他您的登入路徑
-        return;
-    }
+    // if (status === 'unauthenticated') { // 如果用戶未認證，重定向到登入頁面或錯誤頁面
+    //     console.error("User is unauthenticated, redirecting to login.");
+    //     router.replace('/auth/signin'); // 或其他您的登入路徑
+    //     return;
+    // }
 
     // 如果走到這裡，說明 protectedFetch 已準備好，且用戶已認證
     const initializePage = async () => {

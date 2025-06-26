@@ -9,6 +9,9 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView, 
 )
 
+# FRONT_URL = 'https://lalae-data-platform-dcvkvp9xs-pochaowangs-projects.vercel.app'
+FRONT_URL = 'http://localhost:3000'
+
 def email_confirm_redirect(request, key):
     try:
         from allauth.account.models import EmailConfirmation, EmailAddress
@@ -27,17 +30,17 @@ def email_confirm_redirect(request, key):
         
         if email_address.verified:
             print("Email confirmation successful!")
-            return redirect('https://lalae-data-platform-dcvkvp9xs-pochaowangs-projects.vercel.app//email-confirmed?status=success')
+            return redirect(f'{FRONT_URL}/email-confirmed?status=success')
         else:
             print("Email confirmation failed!")
-            return redirect('https://lalae-data-platform-dcvkvp9xs-pochaowangs-projects.vercel.app//email-confirmed?status=error')
+            return redirect(f'{FRONT_URL}/email-confirmed?status=error')
         
     except EmailConfirmation.DoesNotExist:
         print(f"EmailConfirmation with key {key} does not exist")
-        return redirect('https://lalae-data-platform-dcvkvp9xs-pochaowangs-projects.vercel.app//email-confirmed?status=error')
+        return redirect(f'{FRONT_URL}/email-confirmed?status=error')
     except Exception as e:
         print(f"Email confirmation error: {e}")
-        return redirect('https://lalae-data-platform-dcvkvp9xs-pochaowangs-projects.vercel.app//email-confirmed?status=error')
+        return redirect(f'{FRONT_URL}/email-confirmed?status=error')
     
 
 urlpatterns = [

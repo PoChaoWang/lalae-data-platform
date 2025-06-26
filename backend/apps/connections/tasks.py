@@ -2,21 +2,17 @@ import logging
 from celery import shared_task
 from django.conf import settings
 from django.utils import timezone
-from django.utils import timezone
 from django.contrib.auth.models import User
 from google.cloud import bigquery
 from google.api_core.exceptions import NotFound
 
-from .models import Connection
-from .apis.facebook_ads import FacebookAdsAPIClient
-from .apis.google_oauth import GoogleAdsAPIClient
-from allauth.socialaccount.models import SocialToken
-
-from .models import Connection, ConnectionExecution
 from .apis.facebook_ads import FacebookAdsAPIClient
 from .apis.google_oauth import GoogleAdsAPIClient
 from .apis.google_sheet import GoogleSheetAPIClient
-from allauth.socialaccount.models import SocialToken
+
+from apps.clients.models import Client, ClientSocialAccount 
+from .models import Connection, ConnectionExecution
+from allauth.socialaccount.models import SocialToken, SocialAccount
 
 
 logger = logging.getLogger(__name__)
@@ -26,14 +22,37 @@ logger = logging.getLogger(__name__)
 def get_api_client(connection):
     source_name = connection.data_source.name
     if source_name == "FACEBOOK_ADS":
-        if not connection.client or not connection.client.facebook_social_account:
+        # 1. 確認 connection 有關聯到 client
+        if not connection.client:
             raise Exception(
-                f"Connection {connection.id} is not linked to a Client, or its Client is not linked to a Facebook social account."
+                f"Connection {connection.id} is not linked to a Client."
             )
-        # token_obj = SocialToken.objects.get(account=connection.social_account)
-        token_obj = SocialToken.objects.get(
-            account=connection.client.facebook_social_account
-        )
+        
+        # 2. 嘗試從 ClientSocialAccount 中找到與該 client 和 Facebook 相關聯的 SocialAccount
+        try:
+            client_social_account_link = ClientSocialAccount.objects.get(
+                client=connection.client,
+                social_account__provider="facebook"
+            )
+            social_account = client_social_account_link.social_account
+            
+            # 3. 獲取該 SocialAccount 對應的 SocialToken
+            token_obj = SocialToken.objects.get(
+                account=social_account,
+                app__provider="facebook" # 再次確認提供者
+            )
+        except ClientSocialAccount.DoesNotExist:
+            raise Exception(
+                f"Client '{connection.client.name}' (ID: {connection.client.id}) is not linked to a Facebook social account via ClientSocialAccount."
+            )
+        except SocialToken.DoesNotExist:
+            raise Exception(
+                f"Facebook SocialToken not found for account {social_account.uid}. Please ensure the client has been properly authorized with Facebook."
+            )
+        except Exception as e:
+            logger.error(f"Error fetching Facebook social account/token for connection {connection.id}: {e}", exc_info=True)
+            raise Exception(f"Failed to retrieve Facebook authorization. Error: {e}")
+
         return FacebookAdsAPIClient(
             app_id=settings.FACEBOOK_APP_ID,
             app_secret=settings.FACEBOOK_APP_SECRET,
@@ -43,7 +62,6 @@ def get_api_client(connection):
     elif source_name == "GOOGLE_ADS":
         return GoogleAdsAPIClient(connection=connection)
     elif source_name == "GOOGLE_SHEET":
-        # ✨ 新增 Google Sheet 的 client
         return GoogleSheetAPIClient()
     else:
         raise NotImplementedError(

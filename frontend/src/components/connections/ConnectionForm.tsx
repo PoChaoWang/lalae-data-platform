@@ -131,7 +131,7 @@ export default function ConnectionForm({ client, dataSource, initialData }: { cl
       setError("Authentication service unavailable.");
       return;
     }
-    if (authStatus !== 'authorized' || !selectedSocialAccountId) {
+    if ((dataSource.name === 'GOOGLE_ADS' || dataSource.name === 'FACEBOOK_ADS') && (authStatus !== 'authorized' || !selectedSocialAccountId)) {
       setError('Please authorize and select an account before creating the connection.');
       return;
     }

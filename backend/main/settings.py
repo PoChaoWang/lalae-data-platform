@@ -51,8 +51,8 @@ REDIS_URL = env("REDIS_URL")
 REDIS_CACHE_URL = f"{REDIS_URL}/1"
 REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
-# FRONTEND_BASE_URL = "https://lalae-data-platform-94u9eps4l-pochaowangs-projects.vercel.app"
-FRONTEND_BASE_URL = "http://localhost:3000"
+FRONTEND_BASE_URL = "https://lalae-data-platform-94u9eps4l-pochaowangs-projects.vercel.app"
+# FRONTEND_BASE_URL = "http://localhost:3000"
 
 # FRONTEND_BASE_URL = [
 #     r"^https://lalae-data-platform-.*\.vercel\.app$",

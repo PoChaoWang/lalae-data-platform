@@ -594,7 +594,7 @@ def client_oauth_authorize(request, client_id):  # client_id is UUID here
     else:
         messages.error(request, "Invalid data source for OAuth.")
         # 建議可以導向到一個更友善的錯誤頁面或列表頁
-        return redirect("connections:connection_list")  # 假設你有這個 URL name
+        return redirect(final_url)
 
 
 @login_required
@@ -610,7 +610,7 @@ def oauth_callback(request):  # Primarily for Google via AllAuth
     if not client_id:
         logger.error("No client_id found in session")
         messages.error(request, "OAuth session expired or invalid. Please try again.")
-        return redirect("connections:connection_list")
+        return redirect(redirect_path)
 
     try:
         client = Client.objects.get(id=client_id)
@@ -628,7 +628,7 @@ def oauth_callback(request):  # Primarily for Google via AllAuth
             messages.error(
                 request, "Please complete the Google authorization process first."
             )
-            return redirect("connections:connection_list")
+            return redirect(redirect_path)
 
         social_account = social_accounts.first()  # 使用 latest one
         logger.info(
@@ -708,7 +708,7 @@ def facebook_oauth_callback(request):
         messages.error(
             request, "No client ID found in state or session for Facebook OAuth."
         )
-        return redirect("connections:connection_list")
+        return redirect(final_redirect_url)
 
     client_id = client_id_from_state or client_id_from_session
 
@@ -722,7 +722,7 @@ def facebook_oauth_callback(request):
             request,
             f"Facebook authorization failed. Reason: {error_description or error_reason or 'Unknown error'}",
         )
-        return redirect("connections:connection_list")
+        return redirect(final_redirect_url)
 
     try:
         redirect_uri = request.build_absolute_uri(
@@ -826,7 +826,7 @@ def facebook_oauth_callback(request):
             f"An unexpected error occurred during Facebook authorization: {str(e)}",
         )
 
-    return redirect("connections:connection_list")
+    return redirect(final_redirect_url)
 
 
 @authentication_classes([JWTAuthentication])

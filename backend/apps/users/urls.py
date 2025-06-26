@@ -3,10 +3,11 @@ from django.urls import path, include
 from django.contrib.auth import views as auth_views
 from . import views
 import os
+from django.conf import settings
 
 app_name = 'users'
 
-NEXTJS_APP_URL = os.environ.get('FRONTEND_BASE_URL')
+NEXTJS_APP_URL = settings.FRONTEND_BASE_URL
 
 urlpatterns = [
     path('', include('dj_rest_auth.urls')),

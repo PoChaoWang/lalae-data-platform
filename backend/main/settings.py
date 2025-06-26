@@ -51,7 +51,9 @@ REDIS_URL = env("REDIS_URL")
 REDIS_CACHE_URL = f"{REDIS_URL}/1"
 REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
-FRONTEND_BASE_URL = env("FRONTEND_BASE_URL")
+FRONTEND_BASE_URL = [
+    r"^https://lalae-data-platform-.*\.vercel\.app$",
+]
 
 if not GOOGLE_CLOUD_PROJECT_ID:
     raise ImproperlyConfigured(

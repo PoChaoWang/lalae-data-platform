@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -16,6 +17,7 @@ from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 import os
 import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +68,7 @@ class CustomConfirmEmailView(ConfirmEmailView):
         logger.info(f"Attempting to confirm email with key: {key}")
         
         # 從環境變數獲取前端 URL
-        frontend_base_url = os.getenv('FRONTEND_BASE_URL', 'http://localhost:3000')
+        frontend_base_url = settings.FRONTEND_BASE_URL
         frontend_success_url = f"{frontend_base_url}/email-confirmed?status=success"
         frontend_error_url = f"{frontend_base_url}/email-confirmed?status=error"
         

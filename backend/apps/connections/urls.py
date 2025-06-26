@@ -23,7 +23,7 @@ urlpatterns = [
         name="get_google_ads_resources",
     ),
     path(
-        "facebook-ad-accounts/",
+        "get-facebook-ad-accounts/",
         views.get_facebook_ad_accounts,
         name="get_facebook_ad_accounts",
     ),
@@ -62,7 +62,9 @@ urlpatterns = [
     ),
     path(
         "check-auth-status/", views.check_auth_status, name="check_auth_status"
-    ),  # 修改後的通用 auth status
+    ), 
+
+
     # # For Backend
     # path("", views.ConnectionListView.as_view(), name="connection_list"),
     # path("select-client/", views.SelectClientView.as_view(), name="select_dataset"),

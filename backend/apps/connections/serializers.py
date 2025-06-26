@@ -68,7 +68,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
     data_source_id = serializers.IntegerField(write_only=True, required=True)
     
     # 新增 social_account_id 字段，用於接收前端傳來的 SocialAccount UUID
-    social_account_id = serializers.UUIDField(write_only=True, required=False, allow_null=True) # 允許空，因為有些數據源不需要 OAuth
+    social_account_id = serializers.IntegerField(write_only=True, required=False, allow_null=True) 
 
     last_execution_status = serializers.SerializerMethodField()
     last_execution_time = serializers.SerializerMethodField()
@@ -111,15 +111,14 @@ class ConnectionSerializer(serializers.ModelSerializer):
         except (Client.DoesNotExist, DataSource.DoesNotExist) as e:
             raise serializers.ValidationError(str(e))
 
-        social_account = None
+        social_account_instance = None
+        
         if social_account_id:
             try:
-                # 確保選擇的 SocialAccount 存在且與當前用戶關聯（allauth 的 SocialAccount 是與 Django User 關聯的）
-                # 並且該 SocialAccount 已與 Client 連結（通過 ClientSocialAccount）
-                social_account = SocialAccount.objects.get(id=social_account_id, user=self.context['request'].user)
+                social_account_instance = SocialAccount.objects.get(id=social_account_id) 
                 
                 # 額外檢查：確認該 SocialAccount 確實已連結到 Client
-                if not ClientSocialAccount.objects.filter(client=client, social_account=social_account).exists():
+                if not ClientSocialAccount.objects.filter(client=client, social_account=social_account_instance).exists():
                     raise serializers.ValidationError({"social_account_id": "Selected social account is not linked to this client."})
 
             except SocialAccount.DoesNotExist:
@@ -131,7 +130,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
         connection = Connection.objects.create(
             client=client,
             data_source=data_source,
-            social_account=social_account, # 將 social_account 賦值給 Connection
+            social_account=social_account_instance, # 將 social_account 賦值給 Connection
             **validated_data
         )
         
@@ -152,7 +151,7 @@ class ConnectionSerializer(serializers.ModelSerializer):
         # 如果是更新且沒有提供 client_id 和 data_source_id，則從現有 instance 獲取
         client = data.get('client_id')
         data_source = data.get('data_source_id')
-        social_account_id = data.get('social_account_id', None) # 從 data 中獲取 social_account_id
+        social_account_id = data.get('social_account_id', None) 
 
         if is_creating:
             if not client or not data_source:
@@ -168,6 +167,9 @@ class ConnectionSerializer(serializers.ModelSerializer):
             # 如果是更新，且 social_account_id 沒有提供，使用 Connection 自身已有的 social_account
             if social_account_id is None and self.instance.social_account:
                  social_account_id = self.instance.social_account.id # 使用已有的 social_account_id
+
+        logger.info(f"[Serializers] Validating for client_id: {client_obj.id}, data_source_id: {data_source_obj.id}, social_account_id: {social_account_id}")
+        logger.info(f"[Serializers] Request user ID: {self.context['request'].user.id}")
             
         should_run_api_test = is_creating or 'config' in data or 'social_account_id' in data
 
@@ -182,12 +184,47 @@ class ConnectionSerializer(serializers.ModelSerializer):
         
         if social_account_id:
             try:
-                social_account_for_test = SocialAccount.objects.get(id=social_account_id, user=self.context['request'].user)
-                social_token_for_test = SocialToken.objects.get(account=social_account_for_test, app__provider=data_source_obj.name.lower().split('_')[0])
-            except (SocialAccount.DoesNotExist, SocialToken.DoesNotExist):
-                # 如果找不到，表示該社群帳號無效或未授權，後續會拋出驗證錯誤
-                if data_source_obj.oauth_required: # 如果是需要 OAuth 的數據源
-                     raise serializers.ValidationError({"social_account_id": "Selected social account is not valid or authorized."})
+                client_social_link = ClientSocialAccount.objects.get(
+                    client=client_obj,                             
+                    social_account__pk=social_account_id,       
+                )
+
+                logger.info(f"[Serializers] ClientSocialAccount found: {client_social_link.pk}")
+                social_account_for_test = client_social_link.social_account
+
+                logger.info(f"[Serializers] social_account_for_test1: {social_account_for_test}")
+                
+                provider_name_from_data_source = data_source_obj.name.lower().split('_')[0]
+                social_token_for_test = SocialToken.objects.get(
+                    account=social_account_for_test, 
+                    app__provider=provider_name_from_data_source
+                )
+                logger.info(f"[Serializers] social_token_for_test2: {social_token_for_test}")
+
+            except ClientSocialAccount.DoesNotExist:
+                logger.error(f"[Serializers] ClientSocialAccount.DoesNotExist for client: {client_obj.id}, social_account_id: {social_account_id}")
+                raise serializers.ValidationError(
+                    {"social_account_id": "Selected social account is not linked to this client, or is not owned by you, or provider is incorrect."}
+                )
+            except SocialToken.DoesNotExist:
+                logger.error(f"[Serializers] SocialToken.DoesNotExist for social_account_id: {social_account_id}, provider: {provider_name_from_data_source}")
+                # 針對 Facebook 的特定錯誤訊息
+                if data_source_obj.name == "FACEBOOK_ADS":
+                    raise serializers.ValidationError(
+                        {"social_account_id": "Facebook authorization token not found for this account. Please re-authorize."}
+                    )
+                # 對於其他 OAuth 數據源
+                elif data_source_obj.oauth_required:
+                    raise serializers.ValidationError(
+                        {"social_account_id": f"{data_source_obj.display_name} authorization token not found for this account. Please re-authorize."}
+                    )
+                # 如果不需要 OAuth 但沒有 token，則不拋錯
+                else:
+                    pass # 不需要 OAuth 的數據源，沒有 token 也是正常的
+            except Exception as e:
+                logger.error(f"[Serializers] General error in social account check: {e}", exc_info=True)
+                raise serializers.ValidationError({"social_account_id": f"An error occurred with the selected social account: {e}"})
+
 
         # 對於需要 OAuth 的數據源，強制檢查 social_account_for_test
         if data_source_obj.oauth_required and not social_account_for_test:

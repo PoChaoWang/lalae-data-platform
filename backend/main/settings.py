@@ -51,9 +51,12 @@ REDIS_URL = env("REDIS_URL")
 REDIS_CACHE_URL = f"{REDIS_URL}/1"
 REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
-FRONTEND_BASE_URL = [
-    r"^https://lalae-data-platform-.*\.vercel\.app$",
-]
+# FRONTEND_BASE_URL = "https://lalae-data-platform-94u9eps4l-pochaowangs-projects.vercel.app"
+FRONTEND_BASE_URL = "http://localhost:3000"
+
+# FRONTEND_BASE_URL = [
+#     r"^https://lalae-data-platform-.*\.vercel\.app$",
+# ]
 
 if not GOOGLE_CLOUD_PROJECT_ID:
     raise ImproperlyConfigured(
@@ -206,13 +209,6 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-STATIC_URL = "/static/"
-STATICFILES_DIRS = [
-    BASE_DIR / "backend/static",
-]
-STATIC_ROOT = BASE_DIR / "staticfiles"
-
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -319,7 +315,7 @@ DEFAULT_FROM_EMAIL = "dark781228@gmail.com"
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
-ACCOUNT_EMAIL_REQUIRED = True
+
 ACCOUNT_CONFIRM_EMAIL_ON_GET = True
 ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = f'{FRONTEND_BASE_URL}/email-confirmed'
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = f'{FRONTEND_BASE_URL}/email-confirmed'
@@ -329,7 +325,7 @@ ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_SIGNUP_FIELDS = ['email*']
 ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
 ACCOUNT_LOGIN_METHODS = ['email']
-ACCOUNT_AUTHENTICATION_METHOD = 'email'
+ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = False
 ACCOUNT_LOGOUT_ON_GET = True
 SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
@@ -340,7 +336,7 @@ SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_CALLBACK_TEMPLATE = "connections/account/socialaccount_callback.html"
 ACCOUNT_USERNAME_REQUIRED = True
 
-
+STATIC_URL = '/static/'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

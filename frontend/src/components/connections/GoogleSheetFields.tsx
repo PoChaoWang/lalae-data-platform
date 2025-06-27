@@ -150,7 +150,7 @@ export default function GoogleSheetFields({ onConfigChange, initialConfig }: { o
         <Alert className="mt-6 bg-blue-500/10 border-blue-500/30 text-blue-400">
             <Info className="h-4 w-4" />
             <AlertDescription>
-              <strong>Important:</strong> Grant 'Editor' access to <span className="underline">bot-681@my-project-for-bigquery-445809.iam.gserviceaccount.com</span> and set up the general access to 'Anyone with the link' for this sheet.
+              <strong>Important:</strong> Grant 'Editor' access to <span className="underline">bot-681@my-project-for-bigquery-445809.iam.gserviceaccount.com</span> and set up the <span className="font-bold">General Access</span> to <span className="underline">Anyone with the link</span> for this sheet.
 
             </AlertDescription>
         </Alert>

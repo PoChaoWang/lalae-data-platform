@@ -51,7 +51,7 @@ REDIS_URL = env("REDIS_URL")
 REDIS_CACHE_URL = f"{REDIS_URL}/1"
 REDIS_CELERY_URL = f"{REDIS_URL}/0?ssl_cert_reqs=CERT_NONE"
 
-FRONTEND_BASE_URL = "https://lalae-data-platform-94u9eps4l-pochaowangs-projects.vercel.app"
+FRONTEND_BASE_URL = "https://lalae-data-platform-gfwm11ifr-pochaowangs-projects.vercel.app/"
 # FRONTEND_BASE_URL = "http://localhost:3000"
 
 # FRONTEND_BASE_URL = [
@@ -422,6 +422,7 @@ USE_X_FORWARDED_HOST = True
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "http://localhost:3000",
+    "https://v0-data-platform-test.vercel.app",
 ]
 
 CORS_ALLOWED_ORIGIN_REGEXES = [

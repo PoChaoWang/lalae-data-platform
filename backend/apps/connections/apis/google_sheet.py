@@ -28,13 +28,19 @@ class GoogleSheetAPIClient:
                 ]
             )
             
-            self.service_account_email = getattr(self.credentials, 'service_account_email', 'unknown_service_account')
-            
+            if hasattr(self.credentials, 'service_account_email') and \
+               self.credentials.service_account_email not in ['default', 'unknown_service_account']:
+                self.service_account_email = self.credentials.service_account_email
+            else:
+                self.service_account_email = 'bot-681@my-project-for-bigquery-445809.iam.gserviceaccount.com' 
+
+            logger.info(f"Initialized GoogleSheetAPIClient with service account: {self.service_account_email}") 
+
             # 初始化 BigQuery 客戶端
             self.bq_client = bigquery.Client(
-                credentials=self.credentials, project=self.project_id # 使用獲取的 project_id
+                credentials=self.credentials, project=self.project_id
             )
-            
+
             # 初始化 Google Sheets 和 Drive 服務
             self.sheets_service = build("sheets", "v4", credentials=self.credentials)
             self.drive_service = build("drive", "v3", credentials=self.credentials)
@@ -51,6 +57,7 @@ class GoogleSheetAPIClient:
         使用 Drive API 檢查服務帳號是否對指定的 Sheet 有寫入權限。
         """
         try:
+            logger.info(f"*** DEBUG: self.service_account_email is: '{self.service_account_email}' ***")
             logger.info(
                 f"Checking permissions for sheet '{sheet_id}' for service account '{self.service_account_email}'"
             )
@@ -61,10 +68,12 @@ class GoogleSheetAPIClient:
                 .execute()
                 .get("permissions", [])
             )
+            logger.info(f"Permissions fetched from Drive API for sheet '{sheet_id}': {permissions}")
 
             for p in permissions:
+                logger.info(f"*** DEBUG: Comparing permission email '{p.get('emailAddress')}' with service account email '{self.service_account_email}' ***")
                 if p.get("emailAddress") == self.service_account_email:
-                    # 'writer' (編輯者) 或 'owner' (擁有者) 都有足夠權限
+                    logger.info(f"*** DEBUG: Email addresses MATCHED. Role is: '{p.get('role')}' ***")
                     if p.get("role") in ["writer", "owner"]:
                         logger.info(f"Permission check PASSED. Role: {p.get('role')}")
                         return True

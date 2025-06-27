@@ -69,100 +69,94 @@ export default function QueryForm({ client, initialData, queryId }: QueryFormPro
 
   const getInitialState = useCallback(() => {
     if (typeof window !== 'undefined') {
-      const savedDraft = localStorage.getItem(localStorageKey);
-      if (savedDraft) {
-        try {
-          const parsedDraft = JSON.parse(savedDraft);
-          // 這裡可以做一些數據驗證，確保 parsedDraft 結構正確
-          // 如果 initialData 存在，且與 savedDraft 的 queryName 相同，則優先使用 savedDraft
-          if (initialData && parsedDraft.queryName === initialData.displayName) {
-             return parsedDraft;
-          } else if (!initialData) { // 如果是新建查詢頁面，直接用 savedDraft
-             return parsedDraft;
-          }
-        } catch (e) {
-          console.error("Failed to parse saved draft from localStorage:", e);
-          localStorage.removeItem(localStorageKey); // 清除無效的儲存
+        const savedDraft = localStorage.getItem(localStorageKey);
+        if (savedDraft) {
+            try {
+                const parsedDraft = JSON.parse(savedDraft);
+                if (initialData && parsedDraft.queryName === initialData.displayName) {
+                    return parsedDraft;
+                }
+            } catch (e) {
+                console.error("Failed to parse saved draft from localStorage:", e);
+                localStorage.removeItem(localStorageKey);
+            }
         }
-      }
     }
-    // 如果沒有 localStorage 數據，或者解析失敗，則返回 initialData 的值
-    // 注意：這裡需要將 initialData 的 cron_schedule 和 output_target 轉換為組件內部狀態的格式
+
     if (initialData) {
-      const config = initialData.config;
-      let freq = 'Once';
-      let hr = 9;
-      let min = 0;
-      let days: number[] = [];
-      let dom = 1;
+        const config = initialData.config;
+        let freq = 'Once';
+        let hr = 9;
+        let min = 0;
+        let days: number[] = [];
+        let dom = 1;
 
-      if (config.schedule_type === 'PERIODIC' && config.cron_schedule) {
-        const cronParts = config.cron_schedule.split(' ');
-        if (cronParts.length === 5) {
-          const [minutePart, hourPart, dayOfMonthPart, monthPart, dayOfWeekPart] = cronParts;
-          min = parseInt(minutePart, 10);
-          hr = parseInt(hourPart, 10);
+        if (config.schedule_type === 'PERIODIC' && config.cron_schedule) {
+            const cronParts = config.cron_schedule.split(' ');
+            if (cronParts.length === 5) {
+                const [minutePart, hourPart, dayOfMonthPart, monthPart, dayOfWeekPart] = cronParts;
+                min = parseInt(minutePart, 10);
+                hr = parseInt(hourPart, 10);
 
-          if (dayOfWeekPart !== '*' && dayOfMonthPart === '*') { // Weekly
-            freq = 'Weekly';
-            const convertedDays = dayOfWeekPart.split(',').map(Number).map(d => d === 0 ? 6 : d - 1); // 將 0 (Sunday) 轉換為 6
-            days = convertedDays;
-          } else if (dayOfMonthPart !== '*' && dayOfWeekPart === '*') { // Monthly
-            freq = 'Monthly';
-            dom = parseInt(dayOfMonthPart, 10);
-          } else if (dayOfMonthPart === '*' && dayOfWeekPart === '*') { // Daily
-            freq = 'Daily';
-          }
+                if (dayOfWeekPart !== '*' && dayOfMonthPart === '*') { // Weekly
+                    freq = 'Weekly';
+                    const convertedDays = dayOfWeekPart.split(',').map(Number).map(d => d === 0 ? 6 : d - 1);
+                    days = convertedDays;
+                } else if (dayOfMonthPart !== '*' && dayOfWeekPart === '*') { // Monthly
+                    freq = 'Monthly';
+                    dom = parseInt(dayOfMonthPart, 10);
+                } else if (dayOfMonthPart === '*' && dayOfWeekPart === '*') { // Daily
+                    freq = 'Daily';
+                }
+            }
         }
-      }
 
-      let outType = 'None';
-      let sId = '';
-      let tName = '';
-      let appMode = false;
-      let eml = '';
+        let outType = 'None';
+        let sId = '';
+        let tName = '';
+        let appMode = false;
+        let eml = '';
 
-      if (config.output_target === 'GOOGLE_SHEET') {
-        outType = 'Google Sheets';
-        sId = config.sheetId || '';
-        tName = config.tabName || '';
-        appMode = config.appendMode || false;
-      } else if (config.output_target === 'LOOKER_STUDIO') {
-        outType = 'Google Looker Studio';
-        eml = config.email || '';
-      }
+        if (config.output_target === 'GOOGLE_SHEET') {
+            outType = 'Google Sheets';
+            sId = config.sheetId || '';
+            tName = config.tabName || '';
+            appMode = config.appendMode || false;
+        } else if (config.output_target === 'LOOKER_STUDIO') {
+            outType = 'Google Looker Studio';
+            eml = config.email || '';
+        }
 
-      return {
-        queryName: initialData.displayName,
-        sqlQuery: config.sql_query,
-        frequency: freq,
-        hour: hr,
-        minute: min,
-        selectedDays: days,
-        dayOfMonth: dom,
-        output_target: outType,
-        sheetId: sId,
-        tabName: tName,
-        appendMode: appMode,
-        email: eml,
-      };
+        return {
+            queryName: initialData.displayName,
+            sqlQuery: config.sql_query,
+            frequency: freq,
+            hour: hr,
+            minute: min,
+            selectedDays: days,
+            dayOfMonth: dom,
+            output_target: outType,
+            sheetId: sId,
+            tabName: tName,
+            appendMode: appMode,
+            email: eml,
+        };
     }
-    // 全新的表單
     return {
-      queryName: '',
-      sqlQuery: '',
-      frequency: 'Once',
-      hour: 9,
-      minute: 0,
-      selectedDays: [],
-      dayOfMonth: 1,
-      output_target: 'None',
-      sheetId: '',
-      tabName: '',
-      appendMode: false,
-      email: '',
+        queryName: '',
+        sqlQuery: '',
+        frequency: 'Once',
+        hour: 9,
+        minute: 0,
+        selectedDays: [],
+        dayOfMonth: 1,
+        output_target: 'None',
+        sheetId: '',
+        tabName: '',
+        appendMode: false,
+        email: '',
     };
-  }, [initialData, localStorageKey]);
+}, [initialData, localStorageKey]);
 
   const [queryName, setQueryName] = useState(getInitialState().queryName);
   const [sqlQuery, setSqlQuery] = useState(getInitialState().sqlQuery);

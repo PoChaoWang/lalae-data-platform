@@ -94,6 +94,14 @@ export default function LoginPage() {
               <p className="text-gray-400">Access your data command center</p>
             </div>
 
+            <div className="flex items-center justify-center mb-2 border border-orange-400/50">
+              <p className=" text-left p-2">
+              It's test mode. You can use this information to log in. <br />
+              ID: lalae-tester@example.com <br />
+              PW: iamtester12345 <br />
+              </p>
+            </div>
+
             {/* Login Form */}
             <form onSubmit={handleLogin} className="space-y-6">
               

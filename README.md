@@ -1,5 +1,7 @@
 # LaLaE Data Platform
 
+[Ｗ eb Link](https://v0-data-platform-test.vercel.app/)
+
 LaLaE is a data platform designed for marketers to seamlessly connect their **Google Ads**, **Facebook Ads**, and **Google Sheets** data. It enables users to **clean, transform, and export data via SQL**, significantly reducing the time spent on manual data preparation.
 
 The platform is built on **Google Cloud Platform (GCP)** and leverages **BigQuery** for data storage and processing. Below is an overview of its key features.

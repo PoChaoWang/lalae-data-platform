@@ -1005,7 +1005,7 @@ export default function QueryForm({ client, initialData, queryId }: QueryFormPro
                   <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-start space-x-3">
                       <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
                       <p className="text-blue-400 text-sm">
-                          Please remember to grant 'Editor' access to 'lalae-client-data@my-project-for-bigquery-445809.iam.gserviceaccount.com'
+                          Please remember to grant 'Editor' access to ' bot-681@my-project-for-bigquery-445809.iam.gserviceaccount.com'
                           <code className="bg-blue-500/20 px-2 py-1 rounded font-mono">service-account@gmail.com</code>
                       </p>
                   </div>

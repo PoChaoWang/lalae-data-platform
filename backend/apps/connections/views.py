@@ -26,9 +26,6 @@ import json
 from .models import Connection, DataSource, GoogleAdsField, ConnectionExecution, Client
 from django.db.models import Q
 from apps.clients.models import Client, ClientSocialAccount
-from .apis.google_oauth import (
-    oauth_authorize as api_oauth_authorize,
-)
 
 # Import Facebook Ads API client
 from .apis.facebook_ads import (
@@ -984,11 +981,6 @@ def get_client_social_accounts(request, client_id):
         )
 
 def _refresh_social_token(social_token: SocialToken):
-    """
-    嘗試刷新給定的 SocialToken。
-    如果 token_secret (refresh token) 存在且 access token 已過期，則會嘗試刷新。
-    成功刷新後，會更新 SocialToken 模型的 token 和 expires_at。
-    """
     if social_token.app.provider != 'google': # Only supports Google for now
         return
 
@@ -1044,14 +1036,25 @@ def _refresh_social_token(social_token: SocialToken):
         logger.info(f"Successfully refreshed Google Access Token for {social_token.account.extra_data.get('email', social_token.account.uid)}. New expiry: {social_token.expires_at}")
 
     except requests.exceptions.HTTPError as e:
-        logger.error(f"HTTP Error refreshing Google token for {social_token.account.uid}: {e.response.text}", exc_info=True)
-        # 如果刷新失敗，標記為未授權或清除 token
-        social_token.token = ''
-        social_token.token_secret = ''
-        social_token.expires_at = None
-        social_token.save()
-        logger.warning(f"Google SocialAccount {social_token.account.uid} token marked as invalid due to refresh failure.")
-        raise Exception("Failed to refresh Google token. Please re-authorize.") # 向上拋出，讓調用者處理
+        try:
+            error_data = e.response.json()
+            error_code = error_data.get('error')
+        except (ValueError, AttributeError): # Handles cases where response is not JSON
+            error_code = None
+        if error_code == 'invalid_grant':
+            logger.warning(f"Permanent refresh failure (invalid_grant) for account {social_token.account.uid}. Clearing token.", exc_info=True)
+            # This is a permanent failure. Keep the original logic: clear the token and raise.
+            social_token.token = ''
+            social_token.token_secret = ''
+            social_token.expires_at = None
+            social_token.save()
+            raise Exception("Authorization has been revoked or is invalid. Please re-authorize.")
+        else:
+            # 3. For all other HTTP errors (like 500, 503, rate limiting), treat as temporary.
+            # Log the error but DO NOT clear the token_secret.
+            logger.error(f"Temporary HTTP error during token refresh for account {social_token.account.uid}. Will retry later. Error: {e.response.text}", exc_info=True)
+            # Re-raise the original exception so the background task can catch it and schedule a retry.
+            raise e
     except Exception as e:
         logger.error(f"Unexpected error refreshing Google token for {social_token.account.uid}: {e}", exc_info=True)
         social_token.token = ''
